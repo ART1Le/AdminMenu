@@ -413,15 +413,20 @@ local function refreshESP()
 		if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
 			if not espLabels[plr] then
 				createESP(plr)
-			else
-				local gui = espLabels[plr]
+			end
+			-- Always update label content every frame for realtime effect
+			local gui = espLabels[plr]
+			if gui then
 				local n = gui:FindFirstChild("NameLabel")
 				local u = gui:FindFirstChild("UsernameLabel")
-				if n then n.TextColor3 = nickColor end
+				if n then
+					n.TextColor3 = nickColor
+					n.Text = addSpacing(plr.DisplayName, 0.6)
+				end
 				if u then
 					u.TextColor3 = userColor
 					u.Visible = not hideUsername
-					u.Text = "@" .. addSpacing(plr.Name, 1)
+					u.Text = "@" .. addSpacing(plr.Name, 0.6)
 				end
 			end
 		else
