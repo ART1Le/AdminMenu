@@ -1,0 +1,864 @@
+-- ART1LE ESP + FULL PANEL (FINAL, fitur lengkap dan UI sudah diperiksa)
+-- Implemented with modern minimalist UI, safe GUI parenting, GUI protection, and minor nil guards.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- Safe GUI parent detection (supports executors)
+local function getSafeGuiParent()
+	local ok, res = pcall(function()
+		if typeof(gethui) == "function" then return gethui() end
+		if typeof(get_hidden_ui) == "function" then return get_hidden_ui() end
+		if game:FindFirstChild("CoreGui") then return game.CoreGui end
+	end)
+	if ok and res then return res end
+	local pg = localPlayer:FindFirstChildOfClass("PlayerGui") or localPlayer:WaitForChild("PlayerGui")
+	return pg
+end
+
+local function protectGui(gui)
+	pcall(function()
+		if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
+			syn.protect_gui(gui)
+		elseif typeof(ProtectInstance) == "function" then
+			ProtectInstance(gui)
+		end
+	end)
+end
+
+-- Save default lighting to restore later
+local defaultLighting = {
+	FogStart = Lighting.FogStart;
+	FogEnd = Lighting.FogEnd;
+	FogColor = Lighting.FogColor;
+	Brightness = Lighting.Brightness;
+	ClockTime = Lighting.ClockTime;
+	OutdoorAmbient = Lighting.OutdoorAmbient;
+	Ambient = Lighting.Ambient;
+	GlobalShadows = Lighting.GlobalShadows;
+}
+
+local function addSpacing(text, spacing)
+	local spaced = ""
+	for i = 1, #text do
+		spaced = spaced .. text:sub(i, i)
+		if i < #text then
+			if spacing > 0 then
+				spaced = spaced .. string.rep(" ", spacing)
+			end
+		end
+	end
+	return spaced
+end
+
+-- Modern minimalist theme and helpers
+local Theme = {
+	Colors = {
+		Background = Color3.fromRGB(18, 22, 28),
+		Surface = Color3.fromRGB(32, 36, 44),
+		Sunken = Color3.fromRGB(26, 30, 38),
+		Border = Color3.fromRGB(60, 70, 90),
+		Accent = Color3.fromRGB(0, 180, 255),
+		Accent2 = Color3.fromRGB(0, 220, 180),
+		Text = Color3.fromRGB(245, 250, 255),
+		MutedText = Color3.fromRGB(170, 180, 200),
+		InputBg = Color3.fromRGB(40, 44, 56),
+		DropdownBg = Color3.fromRGB(36, 40, 50),
+		Button = Color3.fromRGB(44, 48, 60),
+		ButtonHover = Color3.fromRGB(54, 58, 70),
+		ButtonPress = Color3.fromRGB(34, 38, 50),
+		ToggleOn = Color3.fromRGB(0, 180, 255),
+		Shadow = Color3.fromRGB(0,0,0),
+		Glass = Color3.fromRGB(255,255,255),
+	},
+	Fonts = {
+		Title = Enum.Font.GothamBlack,
+		Body = Enum.Font.GothamMedium,
+		Icon = Enum.Font.GothamBold,
+		Nickname = Enum.Font.FredokaOne, -- Lebih bulat dan friendly untuk nickname
+		Username = Enum.Font.Gotham, -- Netral untuk username
+	},
+	Radius = 16,
+}
+
+local function createRound(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or Theme.Radius)
+	c.Parent = parent
+	return c
+end
+
+local function createStroke(parent, color, thickness)
+	local s = Instance.new("UIStroke")
+	s.Thickness = thickness or 1
+	s.Color = color or Theme.Colors.Border
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = parent
+	return s
+end
+
+local function styleButton(b)
+	b.AutoButtonColor = false
+	b.BackgroundColor3 = Theme.Colors.Button
+	b.BorderSizePixel = 0
+	b.TextColor3 = Theme.Colors.Text
+	b.Font = Theme.Fonts.Body
+	createRound(b, Theme.Radius)
+	createStroke(b, Theme.Colors.Border, 1)
+	b.TextXAlignment = Enum.TextXAlignment.Center
+	b.TextYAlignment = Enum.TextYAlignment.Center
+	b.TextWrapped = true
+	b.RichText = true
+	b.ZIndex = opts and opts.z or 10
+	local function setBg(c3, t)
+		TweenService:Create(b, TweenInfo.new(t or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = c3 }):Play()
+	end
+	b.MouseEnter:Connect(function() setBg(Theme.Colors.Sunken) end)
+	b.MouseLeave:Connect(function() setBg(Theme.Colors.Surface) end)
+	b.MouseButton1Down:Connect(function() setBg(Theme.Colors.Surface:lerp(Theme.Colors.Accent, 0.15), 0.08) end)
+	b.MouseButton1Up:Connect(function() setBg(Theme.Colors.Sunken, 0.08) end)
+end
+
+-- Root GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ART1LE_FULL_PANEL"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Enabled = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.Parent = getSafeGuiParent()
+protectGui(ScreenGui)
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 400, 0, 520)
+Frame.Position = UDim2.new(0.5, -200, 0.13, 0)
+Frame.BackgroundColor3 = Theme.Colors.Surface:lerp(Theme.Colors.Background, 0.25)
+Frame.BorderSizePixel = 0
+Frame.ClipsDescendants = true
+createRound(Frame, Theme.Radius)
+createStroke(Frame, Theme.Colors.Border, 1)
+Frame.ZIndex = 1
+local framePadding = Instance.new("UIPadding", Frame)
+framePadding.PaddingTop = UDim.new(0, 12)
+framePadding.PaddingBottom = UDim.new(0, 12)
+framePadding.PaddingLeft = UDim.new(0, 16)
+framePadding.PaddingRight = UDim.new(0, 16)
+
+
+
+
+-- TitleBar: draggable panel
+local TitleBar = Instance.new("Frame", Frame)
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Theme.Colors.Background
+TitleBar.BorderSizePixel = 0
+createRound(TitleBar, Theme.Radius)
+createStroke(TitleBar, Theme.Colors.Border, 1)
+TitleBar.ZIndex = 2
+local Title = Instance.new("TextLabel", TitleBar)
+Title.Size = UDim2.new(1, 0, 1, 0)
+Title.BackgroundTransparency = 1
+Title.Font = Theme.Fonts.Title
+Title.TextSize = 18
+Title.Text = "ADMIN MENU ART1LE"
+Title.TextColor3 = Theme.Colors.Text
+Title.TextXAlignment = Enum.TextXAlignment.Center
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.ZIndex = 3
+
+do
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
+	TitleBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = Frame.Position
+		end
+	end)
+	TitleBar.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+			local delta = input.Position - dragStart
+			Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+	end)
+end
+
+-- Controls (ESP, Hide Username, Infinity Jump)
+local espEnabled = false
+-- Panel tombol atas (2 kolom, 2 baris)
+local topBtnY = 52
+local btnW, btnH, btnGap = 175, 40, 12
+local espToggle = Instance.new("TextButton", Frame)
+espToggle.Size = UDim2.new(0, btnW, 0, btnH)
+espToggle.Position = UDim2.new(0, 0, 0, topBtnY)
+espToggle.BackgroundColor3 = Theme.Colors.Button
+espToggle.Font = Theme.Fonts.Body
+espToggle.TextSize = 17
+espToggle.TextColor3 = Theme.Colors.Text
+espToggle.Text = "ESP: OFF"
+styleButton(espToggle)
+espToggle.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	espToggle.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+end)
+
+local hideUsername = false
+local hideUserBtn = Instance.new("TextButton", Frame)
+hideUserBtn.Size = UDim2.new(0, btnW, 0, btnH)
+hideUserBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY)
+hideUserBtn.BackgroundColor3 = Theme.Colors.Button
+hideUserBtn.Font = Theme.Fonts.Body
+hideUserBtn.TextSize = 17
+hideUserBtn.TextColor3 = Theme.Colors.Text
+hideUserBtn.Text = "Hide Username: OFF"
+styleButton(hideUserBtn)
+hideUserBtn.MouseButton1Click:Connect(function()
+	hideUsername = not hideUsername
+	hideUserBtn.Text = hideUsername and "Hide Username: ON" or "Hide Username: OFF"
+end)
+
+local infinityJumpEnabled = false
+local infinityJumpBtn = Instance.new("TextButton", Frame)
+infinityJumpBtn.Size = UDim2.new(0, btnW, 0, btnH)
+infinityJumpBtn.Position = UDim2.new(0, 0, 0, topBtnY + btnH + btnGap)
+infinityJumpBtn.BackgroundColor3 = Theme.Colors.Button
+infinityJumpBtn.Font = Theme.Fonts.Body
+infinityJumpBtn.TextSize = 17
+infinityJumpBtn.TextColor3 = Theme.Colors.Text
+infinityJumpBtn.Text = "Infinity Jump: OFF"
+styleButton(infinityJumpBtn)
+infinityJumpBtn.MouseButton1Click:Connect(function()
+	infinityJumpEnabled = not infinityJumpEnabled
+	infinityJumpBtn.Text = infinityJumpEnabled and "Infinity Jump: ON" or "Infinity Jump: OFF"
+end)
+
+local noNightEnabled = false
+local noNightBtn = Instance.new("TextButton", Frame)
+noNightBtn.Size = UDim2.new(0, btnW, 0, btnH)
+noNightBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY + btnH + btnGap)
+noNightBtn.BackgroundColor3 = Theme.Colors.Button
+noNightBtn.Font = Theme.Fonts.Body
+noNightBtn.TextSize = 17
+noNightBtn.TextColor3 = Theme.Colors.Text
+noNightBtn.Text = "No Night: OFF"
+styleButton(noNightBtn)
+noNightBtn.MouseButton1Click:Connect(function()
+	noNightEnabled = not noNightEnabled
+	noNightBtn.Text = noNightEnabled and "No Night: ON" or "No Night: OFF"
+	if not noNightEnabled then
+		Lighting.ClockTime = defaultLighting.ClockTime
+		Lighting.Brightness = defaultLighting.Brightness
+		Lighting.OutdoorAmbient = defaultLighting.OutdoorAmbient
+		Lighting.Ambient = defaultLighting.Ambient
+		Lighting.GlobalShadows = defaultLighting.GlobalShadows
+	else
+		Lighting.ClockTime = 14
+		Lighting.Brightness = 5
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.GlobalShadows = false
+	end
+end)
+
+-- Hue color sliders
+local function createColorSlider(parent, title, posY, defaultHue)
+	local container = Instance.new("Frame", parent)
+	container.Size = UDim2.new(1, -24, 0, 56)
+	container.Position = UDim2.new(0, 12, 0, posY)
+	container.BackgroundTransparency = 1
+
+	local label = Instance.new("TextLabel", container)
+	label.Size = UDim2.new(0, 200, 0, 20)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Theme.Fonts.Body
+	label.TextSize = 14
+	label.TextColor3 = Theme.Colors.MutedText
+	label.Text = title
+	label.TextXAlignment = Enum.TextXAlignment.Left
+
+	local bar = Instance.new("Frame", container)
+	-- Extend hue bar to the right edge (respect container padding only)
+	bar.Size = UDim2.new(1, 0, 0, 16)
+	bar.Position = UDim2.new(0, 0, 0, 32)
+	bar.BackgroundColor3 = Theme.Colors.InputBg
+	bar.BorderSizePixel = 0
+	createRound(bar, 8)
+	createStroke(bar, Theme.Colors.Border, 1)
+
+	local gradient = Instance.new("UIGradient", bar)
+	gradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+		ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+		ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+		ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+		ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+		ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+	}
+
+	local indicator = Instance.new("Frame", bar)
+	indicator.Size = UDim2.new(0, 12, 0, 12)
+	indicator.Position = UDim2.new(0, -6, 0.5, -6)
+	indicator.BackgroundColor3 = Color3.new(1, 1, 1)
+	indicator.BorderSizePixel = 0
+	createRound(indicator, 6)
+	createStroke(indicator, Theme.Colors.Border, 1)
+
+	-- Remove color preview to simplify UI
+
+	local hue = defaultHue or 0
+	local function updateIndicator()
+		indicator.Position = UDim2.new(hue, -6, 0.5, -6)
+	end
+	updateIndicator()
+
+	bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local conn
+			conn = UserInputService.InputChanged:Connect(function(i)
+				if i.UserInputType == Enum.UserInputType.MouseMovement then
+					local relX = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+					hue = relX
+					updateIndicator()
+				end
+			end)
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					if conn then conn:Disconnect() end
+				end
+			end)
+		end
+	end)
+
+	return { getColor = function() return Color3.fromHSV(hue, 1, 1) end }
+end
+
+-- Color sliders di bawah tombol
+local sliderY = topBtnY + (btnH + btnGap) * 2 + 10
+local nicknameSliders = createColorSlider(Frame, "Nickname Color:", sliderY, 0.55)
+local usernameSliders = createColorSlider(Frame, "Username Color:", sliderY + 56, 0)
+
+-- ESP Core
+local espLabels = {}
+
+local function createESP(player)
+	if espLabels[player] then return end
+	local char = player.Character
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	if not head then return end
+	local billboard = Instance.new("BillboardGui")
+	billboard.Adornee = head
+	billboard.Size = UDim2.new(0, 260, 0, 64)
+	billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = head
+
+	local nameLabel = Instance.new("TextLabel", billboard)
+	nameLabel.Name = "NameLabel"
+	nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+	nameLabel.Position = UDim2.new(0, 0, 0, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Theme.Fonts.Nickname -- GothamBold
+	nameLabel.TextSize = 20
+	nameLabel.Text = addSpacing(player.DisplayName, 0.6)
+	nameLabel.TextStrokeTransparency = 0.18
+	nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	nameLabel.TextColor3 = nicknameSliders.getColor()
+	nameLabel.TextWrapped = true
+
+	local userLabel = Instance.new("TextLabel", billboard)
+	userLabel.Name = "UsernameLabel"
+	userLabel.Size = UDim2.new(1, 0, 0.4, 0)
+	userLabel.Position = UDim2.new(0, 0, 0.6, 0)
+	userLabel.BackgroundTransparency = 1
+	userLabel.Font = Theme.Fonts.Username -- GothamMedium
+	userLabel.TextSize = 15
+	userLabel.Text = "@" .. addSpacing(player.Name, 0.6)
+	userLabel.TextStrokeTransparency = 0.25
+	userLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	userLabel.TextColor3 = usernameSliders.getColor()
+	userLabel.TextWrapped = true
+
+	espLabels[player] = billboard
+end
+
+local function removeESP(player)
+	if espLabels[player] then
+		espLabels[player]:Destroy()
+		espLabels[player] = nil
+	end
+end
+
+local function refreshESP()
+	if not espEnabled then
+		for _, g in pairs(esplabels or espLabels) do g:Destroy() end
+		espLabels = {}
+		return
+	end
+	local nickColor = nicknameSliders.getColor()
+	local userColor = usernameSliders.getColor()
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+			if not espLabels[plr] then
+				createESP(plr)
+			else
+				local gui = espLabels[plr]
+				local n = gui:FindFirstChild("NameLabel")
+				local u = gui:FindFirstChild("UsernameLabel")
+				if n then n.TextColor3 = nickColor end
+				if u then
+					u.TextColor3 = userColor
+					u.Visible = not hideUsername
+					u.Text = "@" .. addSpacing(plr.Name, 1)
+				end
+			end
+		else
+			removeESP(plr)
+		end
+	end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(function()
+		task.wait(0.25)
+		createESP(plr)
+	end)
+end)
+for _, plr in pairs(Players:GetPlayers()) do
+	plr.CharacterAdded:Connect(function()
+		task.wait(0.25)
+		createESP(plr)
+	end)
+	if plr.Character then createESP(plr) end
+end
+Players.PlayerRemoving:Connect(removeESP)
+
+-- SEARCH PLAYER + DROPDOWN
+local searchY = sliderY + 56*2 + 16
+local searchBox = Instance.new("TextBox", Frame)
+searchBox.Size = UDim2.new(1, 0, 0, 36)
+searchBox.Position = UDim2.new(0, 0, 0, searchY)
+searchBox.PlaceholderText = "🔎  Search player..."
+searchBox.Font = Theme.Fonts.Body
+searchBox.TextSize = 17
+searchBox.TextColor3 = Theme.Colors.Text
+searchBox.BackgroundColor3 = Theme.Colors.InputBg
+searchBox.ClearTextOnFocus = false
+searchBox.PlaceholderColor3 = Theme.Colors.MutedText
+searchBox.ZIndex = 40
+createRound(searchBox, Theme.Radius)
+createStroke(searchBox, Theme.Colors.Border, 1)
+
+local dropdown = Instance.new("Frame", Frame)
+dropdown.Size = UDim2.new(1, 0, 0, 0)
+dropdown.Position = UDim2.new(0, 0, 0, searchY + 40)
+dropdown.BackgroundTransparency = 1
+dropdown.BorderSizePixel = 0
+dropdown.ClipsDescendants = true
+dropdown.ZIndex = 100
+dropdown.Visible = false
+local dropdownPadding = Instance.new("UIPadding", dropdown)
+dropdownPadding.PaddingTop = UDim.new(0, 0)
+dropdownPadding.PaddingBottom = UDim.new(0, 0)
+dropdownPadding.PaddingLeft = UDim.new(0, 0)
+dropdownPadding.PaddingRight = UDim.new(0, 0)
+
+-- UIListLayout akan dibuat ulang setiap clearSuggestions
+
+local currentSuggestions = {}
+local function clearSuggestions()
+	for _, c in ipairs(dropdown:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("UIListLayout") then c:Destroy() end
+	end
+	currentSuggestions = {}
+	dropdown.Size = UDim2.new(0, 0, 0, 0)
+	dropdown.Visible = false
+	local newLayout = Instance.new("UIListLayout", dropdown)
+	newLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	newLayout.Padding = UDim.new(0, 12)
+	newLayout.FillDirection = Enum.FillDirection.Horizontal
+	newLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	newLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+end
+
+local selectedLabel = Instance.new("TextLabel", Frame)
+selectedLabel.Size = UDim2.new(1, 0, 0, 36)
+selectedLabel.Position = UDim2.new(0, 0, 0, searchY + 40 + 56 + 8)
+selectedLabel.BackgroundTransparency = 0.12
+selectedLabel.BackgroundColor3 = Theme.Colors.Button:lerp(Theme.Colors.Surface, 0.2)
+selectedLabel.Font = Theme.Fonts.Title
+selectedLabel.TextSize = 17
+selectedLabel.TextColor3 = Theme.Colors.Accent
+selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+selectedLabel.Text = "  👤  <b>Selected:</b> <font color=\"#ffffff\">None</font>"
+selectedLabel.RichText = true
+selectedLabel.ZIndex = 10
+createRound(selectedLabel, Theme.Radius)
+createStroke(selectedLabel, Theme.Colors.Border, 1)
+
+local selectedPlayer = nil
+local spying = false
+
+	for _, c in ipairs(dropdown:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("UIListLayout") then c:Destroy() end
+	end
+	currentSuggestions = {}
+	dropdown.Size = UDim2.new(1, -40, 0, 0)
+	dropdown.Visible = false
+	local newLayout = Instance.new("UIListLayout", dropdown)
+	newLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	newLayout.Padding = UDim.new(0, 6)
+
+
+local function makeSuggestionButton(player)
+	local btn = Instance.new("TextButton", dropdown)
+	btn.Size = UDim2.new(1/2, 0, 1, 0) -- 2 hasil, bagi rata
+	btn.BackgroundColor3 = Theme.Colors.Button
+	btn.BorderSizePixel = 0
+	btn.Font = Theme.Fonts.Body
+	btn.TextSize = 15
+	btn.TextColor3 = Theme.Colors.Text
+	btn.Text = string.format("<font color=\"#00aaff\">👤</font> <b>%s</b>\n<font color=\"#aaaaaa\">@%s</font>", player.DisplayName, player.Name)
+	btn.RichText = true
+	btn.AutoButtonColor = false
+	btn.ZIndex = 101
+	btn.TextYAlignment = Enum.TextYAlignment.Top
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	local textPadding = Instance.new("UIPadding", btn)
+	textPadding.PaddingLeft = UDim.new(0, 8)
+	textPadding.PaddingRight = UDim.new(0, 8)
+	textPadding.PaddingTop = UDim.new(0, 6)
+	textPadding.PaddingBottom = UDim.new(0, 6)
+	createRound(btn, Theme.Radius)
+	createStroke(btn, Theme.Colors.Border, 1)
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.ToggleOn }):Play()
+		btn.TextColor3 = Theme.Colors.Glass
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.Button }):Play()
+		btn.TextColor3 = Theme.Colors.Text
+	end)
+	btn.MouseButton1Click:Connect(function()
+		selectedPlayer = player
+		selectedLabel.Text = string.format("👤  <b>Selected:</b> <font color=\"#00aaff\">%s</font> <font color=\"#aaaaaa\">(@%s)</font>", player.DisplayName, player.Name)
+		dropdown.Visible = false
+		clearSuggestions()
+		searchBox.Text = ""
+		if spying and selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
+			camera.CameraSubject = selectedPlayer.Character.Humanoid
+		end
+	end)
+	return btn
+end
+
+local function updateSuggestions()
+	clearSuggestions()
+	local q = (searchBox.Text or ""):lower():gsub("^%s+",""):gsub("%s+$","")
+	if q == "" then return end
+	local scored = {}
+	for _, plr in pairs(Players:GetPlayers()) do
+		local d, n = plr.DisplayName, plr.Name
+		local dScore = d:lower():find(q, 1, true) and 2 or 0
+		local nScore = n:lower():find(q, 1, true) and 1 or 0
+		local bestScore = math.max(dScore, nScore)
+		if bestScore > 0 then
+			table.insert(scored, {player=plr, score=bestScore, d=d, n=n})
+		end
+	end
+	table.sort(scored, function(a, b)
+		if a.score ~= b.score then return a.score > b.score end
+		return a.d < b.d
+	end)
+	local count = math.min(2, #scored)
+	if count == 0 then return end
+	for i = 1, count do
+		local plr = scored[i].player
+		local btn = makeSuggestionButton(plr)
+		btn.LayoutOrder = i
+		table.insert(currentSuggestions, btn)
+	end
+	-- Panel width selalu selebar searchBox (1, -40)
+	dropdown.Size = UDim2.new(1, -40, 0, 56)
+	dropdown.Visible = true
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(updateSuggestions)
+Players.PlayerAdded:Connect(updateSuggestions)
+
+-- Open/close behavior for dropdown based on focus
+searchBox.Focused:Connect(function()
+	updateSuggestions()
+end)
+searchBox.FocusLost:Connect(function(enterPressed)
+	-- Close the dropdown shortly after to allow button click to register
+	task.delay(0.1, function()
+		dropdown.Visible = false
+		dropdown.Size = UDim2.new(1, -24, 0, 0)
+		clearSuggestions()
+	end)
+end)
+
+-- Predeclare buttons to avoid upvalue issues
+local teleportBtn -- set later
+local spyBtn -- set later
+
+Players.PlayerRemoving:Connect(function()
+	if selectedPlayer and not Players:FindFirstChild(selectedPlayer.Name) then
+		selectedPlayer = nil
+		selectedLabel.Text = "Selected: None"
+		if spying then
+			spying = false
+			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" end
+			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+				camera.CameraSubject = localPlayer.Character.Humanoid
+			end
+		end
+	end
+	updateSuggestions()
+end)
+
+-- Teleport and Spy buttons
+
+local btnY = selectedLabel.Position.Y.Offset + selectedLabel.Size.Y.Offset + 12
+teleportBtn = Instance.new("TextButton", Frame)
+teleportBtn.Size = UDim2.new(0.48, -6, 0, 36)
+teleportBtn.Position = UDim2.new(0, 0, 0, btnY)
+teleportBtn.BackgroundColor3 = Theme.Colors.Surface
+teleportBtn.Font = Theme.Fonts.Body
+teleportBtn.TextSize = 16
+teleportBtn.TextColor3 = Theme.Colors.Text
+teleportBtn.Text = "Teleport"
+styleButton(teleportBtn)
+teleportBtn.ZIndex = 10
+
+spyBtn = Instance.new("TextButton", Frame)
+spyBtn.Size = UDim2.new(0.48, -6, 0, 36)
+spyBtn.Position = UDim2.new(0.52, 6, 0, btnY)
+spyBtn.BackgroundColor3 = Theme.Colors.Surface
+spyBtn.Font = Theme.Fonts.Body
+spyBtn.TextSize = 16
+spyBtn.TextColor3 = Theme.Colors.Text
+spyBtn.Text = "Spy: OFF"
+styleButton(spyBtn)
+spyBtn.ZIndex = 10
+
+teleportBtn.MouseButton1Click:Connect(function()
+	if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+		local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if myHRP then
+			myHRP.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
+		end
+	end
+end)
+
+spyBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer then return end
+	if not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid")) then return end
+	spying = not spying
+	if spying then
+		spyBtn.Text = "Spy: ON"
+		camera.CameraSubject = selectedPlayer.Character.Humanoid
+	else
+		spyBtn.Text = "Spy: OFF"
+		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+			camera.CameraSubject = localPlayer.Character.Humanoid
+		end
+	end
+end)
+
+-- EMOTE FULL Toggle (posisi setelah spyBtn)
+local emoteY = btnY + 36 + 10
+local emoteToggleBtn = Instance.new("TextButton", Frame)
+emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
+emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
+emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
+emoteToggleBtn.Font = Theme.Fonts.Body
+emoteToggleBtn.TextSize = 16
+emoteToggleBtn.TextColor3 = Theme.Colors.Text
+emoteToggleBtn.Text = "EMOTE FULL: OFF"
+styleButton(emoteToggleBtn)
+emoteToggleBtn.ZIndex = 10
+
+local emoteActive = false
+local emoteAnimations = {}
+
+emoteToggleBtn.MouseButton1Click:Connect(function()
+	emoteActive = not emoteActive
+	if emoteActive then
+		emoteToggleBtn.Text = "EMOTE FULL: ON"
+		pcall(function()
+			emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
+		end)
+	else
+		emoteToggleBtn.Text = "EMOTE FULL: OFF"
+		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+			for _, anim in pairs(emoteAnimations) do
+				if type(anim) == "table" and anim.Stop then
+					pcall(function() anim:Stop() end)
+				elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
+					pcall(function() anim:Stop() end)
+				end
+			end
+			emoteAnimations = {}
+		end
+	end
+end)
+
+-- CP Creator Toggle (posisi setelah emoteToggleBtn)
+local cpCreatorY = emoteY + 38 + 10
+local cpCreatorBtn = Instance.new("TextButton", Frame)
+cpCreatorBtn.Size = UDim2.new(1, 0, 0, 38)
+cpCreatorBtn.Position = UDim2.new(0, 0, 0, cpCreatorY)
+cpCreatorBtn.BackgroundColor3 = Theme.Colors.Surface
+cpCreatorBtn.Font = Theme.Fonts.Body
+cpCreatorBtn.TextSize = 16
+cpCreatorBtn.TextColor3 = Theme.Colors.Text
+cpCreatorBtn.Text = "CP Creator: OFF"
+styleButton(cpCreatorBtn)
+cpCreatorBtn.ZIndex = 10
+
+local cpCreatorActive = false
+cpCreatorBtn.MouseButton1Click:Connect(function()
+	cpCreatorActive = not cpCreatorActive
+	if cpCreatorActive then
+		cpCreatorBtn.Text = "CP Creator: ON"
+		pcall(function()
+			loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/createcpmanual/refs/heads/main/config.lua"))()
+		end)
+	else
+		cpCreatorBtn.Text = "CP Creator: OFF"
+	end
+end)
+
+local function ensureSpyHealth()
+	if spying then
+		if not selectedPlayer or not selectedPlayer.Parent or not selectedPlayer.Character or not selectedPlayer.Character:FindFirstChild("Humanoid") then
+			spying = false
+			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" end
+			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+				camera.CameraSubject = localPlayer.Character.Humanoid
+			end
+		else
+			camera.CameraSubject = selectedPlayer.Character.Humanoid
+		end
+	end
+end
+
+-- EMOTE FULL Toggle
+emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
+emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
+emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
+emoteToggleBtn.Font = Theme.Fonts.Body
+emoteToggleBtn.TextSize = 16
+emoteToggleBtn.TextColor3 = Theme.Colors.Text
+emoteToggleBtn.Text = "EMOTE FULL: OFF"
+styleButton(emoteToggleBtn)
+emoteToggleBtn.ZIndex = 10
+
+local emoteActive = false
+local emoteAnimations = {}
+
+emoteToggleBtn.MouseButton1Click:Connect(function()
+	emoteActive = not emoteActive
+	if emoteActive then
+		emoteToggleBtn.Text = "EMOTE FULL: ON"
+		pcall(function()
+			emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
+		end)
+	else
+		emoteToggleBtn.Text = "EMOTE FULL: OFF"
+		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+			for _, anim in pairs(emoteAnimations) do
+				if type(anim) == "table" and anim.Stop then
+					pcall(function() anim:Stop() end)
+				elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
+					pcall(function() anim:Stop() end)
+				end
+			end
+			emoteAnimations = {}
+		end
+	end
+end)
+
+-- CP Creator Toggle
+local cpCreatorY = emoteY + 38 + 10
+local cpCreatorBtn = Instance.new("TextButton", Frame)
+cpCreatorBtn.Size = UDim2.new(1, 0, 0, 38)
+cpCreatorBtn.Position = UDim2.new(0, 0, 0, cpCreatorY)
+cpCreatorBtn.BackgroundColor3 = Theme.Colors.Surface
+cpCreatorBtn.Font = Theme.Fonts.Body
+cpCreatorBtn.TextSize = 16
+cpCreatorBtn.TextColor3 = Theme.Colors.Text
+cpCreatorBtn.Text = "CP Creator: OFF"
+styleButton(cpCreatorBtn)
+cpCreatorBtn.ZIndex = 10
+
+local cpCreatorActive = false
+cpCreatorBtn.MouseButton1Click:Connect(function()
+    cpCreatorActive = not cpCreatorActive
+    if cpCreatorActive then
+        cpCreatorBtn.Text = "CP Creator: ON"
+        pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/createcpmanual/refs/heads/main/config.lua"))()
+        end)
+    else
+        cpCreatorBtn.Text = "CP Creator: OFF"
+    end
+end)
+
+-- Toggle panel with key (N)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed and input.KeyCode == Enum.KeyCode.N then
+		ScreenGui.Enabled = not ScreenGui.Enabled
+		if ScreenGui.Enabled then updateSuggestions() end
+		if not ScreenGui.Enabled and spying then
+			spying = true
+			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: ON" end
+			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+				camera.CameraSubject = localPlayer.Character.Humanoid
+			end
+		end
+	end
+end)
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+	refreshESP()
+	if noNightEnabled then
+		Lighting.ClockTime = 14
+		Lighting.Brightness = 5
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.GlobalShadows = false
+	end
+	ensureSpyHealth()
+	-- Panel utama auto-resize mengikuti konten
+	local cpBottom = cpCreatorBtn.Position.Y.Offset + cpCreatorBtn.Size.Y.Offset
+	Frame.Size = UDim2.new(0, 400, 0, cpBottom + 28)
+end)
+
+-- Infinity Jump
+local function onJumpRequest()
+	if infinityJumpEnabled then
+		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end
+UserInputService.JumpRequest:Connect(onJumpRequest)
+
+updateSuggestions()
