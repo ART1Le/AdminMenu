@@ -401,38 +401,33 @@ local function removeESP(player)
 	end
 end
 
-local function updateESPLabels()
-	if not espEnabled then return end
-	local nickColor = nicknameSliders.getColor()
-	local userColor = usernameSliders.getColor()
-	for _, plr in pairs(Players:GetPlayers()) do
-		local gui = espLabels[plr]
-		if gui then
-			local n = gui:FindFirstChild("NameLabel")
-			local u = gui:FindFirstChild("UsernameLabel")
-			if n then
-				n.TextColor3 = nickColor
-				n.Text = addSpacing(plr.DisplayName, 0.6)
-			end
-			if u then
-				u.TextColor3 = userColor
-				u.Visible = not hideUsername
-				u.Text = "@" .. addSpacing(plr.Name, 0.6)
-			end
-		end
-	end
-end
-
 local function refreshESP()
 	if not espEnabled then
 		for _, g in pairs(esplabels or espLabels) do g:Destroy() end
 		espLabels = {}
 		return
 	end
+	local nickColor = nicknameSliders.getColor()
+	local userColor = usernameSliders.getColor()
 	for _, plr in pairs(Players:GetPlayers()) do
 		if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
 			if not espLabels[plr] then
 				createESP(plr)
+			end
+			-- Always update label content every frame for realtime effect
+			local gui = espLabels[plr]
+			if gui then
+				local n = gui:FindFirstChild("NameLabel")
+				local u = gui:FindFirstChild("UsernameLabel")
+				if n then
+					n.TextColor3 = nickColor
+					n.Text = addSpacing(plr.DisplayName, 0.6)
+				end
+				if u then
+					u.TextColor3 = userColor
+					u.Visible = not hideUsername
+					u.Text = "@" .. addSpacing(plr.Name, 0.6)
+				end
 			end
 		else
 			removeESP(plr)
@@ -690,7 +685,42 @@ spyBtn.MouseButton1Click:Connect(function()
 end)
 
 -- EMOTE FULL Toggle (posisi setelah spyBtn)
--- ...existing code...
+local emoteY = btnY + 36 + 10
+local emoteToggleBtn = Instance.new("TextButton", Frame)
+emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
+emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
+emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
+emoteToggleBtn.Font = Theme.Fonts.Body
+emoteToggleBtn.TextSize = 16
+emoteToggleBtn.TextColor3 = Theme.Colors.Text
+emoteToggleBtn.Text = "EMOTE FULL: OFF"
+styleButton(emoteToggleBtn)
+emoteToggleBtn.ZIndex = 10
+
+local emoteActive = false
+local emoteAnimations = {}
+
+emoteToggleBtn.MouseButton1Click:Connect(function()
+	emoteActive = not emoteActive
+	if emoteActive then
+		emoteToggleBtn.Text = "EMOTE FULL: ON"
+		pcall(function()
+			emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
+		end)
+	else
+		emoteToggleBtn.Text = "EMOTE FULL: OFF"
+		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+			for _, anim in pairs(emoteAnimations) do
+				if type(anim) == "table" and anim.Stop then
+					pcall(function() anim:Stop() end)
+				elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
+					pcall(function() anim:Stop() end)
+				end
+			end
+			emoteAnimations = {}
+		end
+	end
+end)
 
 -- CP Creator Toggle (posisi setelah emoteToggleBtn)
 local cpCreatorY = emoteY + 38 + 10
@@ -823,14 +853,6 @@ RunService.RenderStepped:Connect(function()
 	-- Panel utama auto-resize mengikuti konten
 	local cpBottom = cpCreatorBtn.Position.Y.Offset + cpCreatorBtn.Size.Y.Offset
 	Frame.Size = UDim2.new(0, 400, 0, cpBottom + 28)
-end)
-
--- Interval update ESP label (warna dan teks) setiap 3 detik
-spawn(function()
-	while true do
-		task.wait(3)
-		updateESPLabels()
-	end
 end)
 
 -- Infinity Jump
