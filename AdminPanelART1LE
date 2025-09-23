@@ -1,869 +1,2605 @@
--- ART1LE ESP + FULL PANEL (FINAL, fitur lengkap dan UI sudah diperiksa)
--- Implemented with modern minimalist UI, safe GUI parenting, GUI protection, and minor nil guards.
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local UserInputService = game:GetService("UserInputService")
+	local ContextActionService = game:GetService("ContextActionService")
+	local StarterGui = game:GetService("StarterGui")
+	local Lighting = game:GetService("Lighting")
+	local TweenService = game:GetService("TweenService")
+	local VirtualUser = game:GetService("VirtualUser")
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
-local TweenService = game:GetService("TweenService")
+	local localPlayer = Players.LocalPlayer
+	local camera = workspace.CurrentCamera
 
-local localPlayer = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+	-- Forward declarations for fly controls so early UI callbacks can reference them safely
+	local startFly, stopFly
 
--- Safe GUI parent detection (supports executors)
-local function getSafeGuiParent()
-	local ok, res = pcall(function()
-		if typeof(gethui) == "function" then return gethui() end
-		if typeof(get_hidden_ui) == "function" then return get_hidden_ui() end
-		if game:FindFirstChild("CoreGui") then return game.CoreGui end
-	end)
-	if ok and res then return res end
-	local pg = localPlayer:FindFirstChildOfClass("PlayerGui") or localPlayer:WaitForChild("PlayerGui")
-	return pg
-end
-
-local function protectGui(gui)
-	pcall(function()
-		if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
-			syn.protect_gui(gui)
-		elseif typeof(ProtectInstance) == "function" then
-			ProtectInstance(gui)
-		end
-	end)
-end
-
--- Save default lighting to restore later
-local defaultLighting = {
-	FogStart = Lighting.FogStart;
-	FogEnd = Lighting.FogEnd;
-	FogColor = Lighting.FogColor;
-	Brightness = Lighting.Brightness;
-	ClockTime = Lighting.ClockTime;
-	OutdoorAmbient = Lighting.OutdoorAmbient;
-	Ambient = Lighting.Ambient;
-	GlobalShadows = Lighting.GlobalShadows;
-}
-
-local function addSpacing(text, spacing)
-	local spaced = ""
-	for i = 1, #text do
-		spaced = spaced .. text:sub(i, i)
-		if i < #text then
-			if spacing > 0 then
-				spaced = spaced .. string.rep(" ", spacing)
-			end
-		end
-	end
-	return spaced
-end
-
--- Modern minimalist theme and helpers
-local Theme = {
-	Colors = {
-		Background = Color3.fromRGB(18, 22, 28),
-		Surface = Color3.fromRGB(32, 36, 44),
-		Sunken = Color3.fromRGB(26, 30, 38),
-		Border = Color3.fromRGB(60, 70, 90),
-		Accent = Color3.fromRGB(0, 180, 255),
-		Accent2 = Color3.fromRGB(0, 220, 180),
-		Text = Color3.fromRGB(245, 250, 255),
-		MutedText = Color3.fromRGB(170, 180, 200),
-		InputBg = Color3.fromRGB(40, 44, 56),
-		DropdownBg = Color3.fromRGB(36, 40, 50),
-		Button = Color3.fromRGB(44, 48, 60),
-		ButtonHover = Color3.fromRGB(54, 58, 70),
-		ButtonPress = Color3.fromRGB(34, 38, 50),
-		ToggleOn = Color3.fromRGB(0, 180, 255),
-		Shadow = Color3.fromRGB(0,0,0),
-		Glass = Color3.fromRGB(255,255,255),
-	},
-	Fonts = {
-		Title = Enum.Font.GothamBlack,
-		Body = Enum.Font.GothamMedium,
-		Icon = Enum.Font.GothamBold,
-		Nickname = Enum.Font.FredokaOne, -- Lebih bulat dan friendly untuk nickname
-		Username = Enum.Font.Gotham, -- Netral untuk username
-	},
-	Radius = 16,
-}
-
-local function createRound(parent, radius)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, radius or Theme.Radius)
-	c.Parent = parent
-	return c
-end
-
-local function createStroke(parent, color, thickness)
-	local s = Instance.new("UIStroke")
-	s.Thickness = thickness or 1
-	s.Color = color or Theme.Colors.Border
-	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	s.Parent = parent
-	return s
-end
-
-local function styleButton(b)
-	b.AutoButtonColor = false
-	b.BackgroundColor3 = Theme.Colors.Button
-	b.BorderSizePixel = 0
-	b.TextColor3 = Theme.Colors.Text
-	b.Font = Theme.Fonts.Body
-	createRound(b, Theme.Radius)
-	createStroke(b, Theme.Colors.Border, 1)
-	b.TextXAlignment = Enum.TextXAlignment.Center
-	b.TextYAlignment = Enum.TextYAlignment.Center
-	b.TextWrapped = true
-	b.RichText = true
-	b.ZIndex = opts and opts.z or 10
-	local function setBg(c3, t)
-		TweenService:Create(b, TweenInfo.new(t or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = c3 }):Play()
-	end
-	b.MouseEnter:Connect(function() setBg(Theme.Colors.Sunken) end)
-	b.MouseLeave:Connect(function() setBg(Theme.Colors.Surface) end)
-	b.MouseButton1Down:Connect(function() setBg(Theme.Colors.Surface:lerp(Theme.Colors.Accent, 0.15), 0.08) end)
-	b.MouseButton1Up:Connect(function() setBg(Theme.Colors.Sunken, 0.08) end)
-end
-
--- Root GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ART1LE_FULL_PANEL"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Enabled = true
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-ScreenGui.Parent = getSafeGuiParent()
-protectGui(ScreenGui)
-
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 400, 0, 520)
-Frame.Position = UDim2.new(0.5, -200, 0.13, 0)
-Frame.BackgroundColor3 = Theme.Colors.Surface:lerp(Theme.Colors.Background, 0.25)
-Frame.BorderSizePixel = 0
-Frame.ClipsDescendants = true
-createRound(Frame, Theme.Radius)
-createStroke(Frame, Theme.Colors.Border, 1)
-Frame.ZIndex = 1
-local framePadding = Instance.new("UIPadding", Frame)
-framePadding.PaddingTop = UDim.new(0, 12)
-framePadding.PaddingBottom = UDim.new(0, 12)
-framePadding.PaddingLeft = UDim.new(0, 16)
-framePadding.PaddingRight = UDim.new(0, 16)
-
-
-
-
--- TitleBar: draggable panel
-local TitleBar = Instance.new("Frame", Frame)
-TitleBar.Size = UDim2.new(1, 0, 0, 40)
-TitleBar.BackgroundColor3 = Theme.Colors.Background
-TitleBar.BorderSizePixel = 0
-createRound(TitleBar, Theme.Radius)
-createStroke(TitleBar, Theme.Colors.Border, 1)
-TitleBar.ZIndex = 2
-local Title = Instance.new("TextLabel", TitleBar)
-Title.Size = UDim2.new(1, 0, 1, 0)
-Title.BackgroundTransparency = 1
-Title.Font = Theme.Fonts.Title
-Title.TextSize = 18
-Title.Text = "ADMIN MENU ART1LE"
-Title.TextColor3 = Theme.Colors.Text
-Title.TextXAlignment = Enum.TextXAlignment.Center
-Title.Position = UDim2.new(0, 0, 0, 0)
-Title.ZIndex = 3
-
-do
-	local dragging = false
-	local dragStart = nil
-	local startPos = nil
-	TitleBar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-			dragStart = input.Position
-			startPos = Frame.Position
-		end
-	end)
-	TitleBar.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-			local delta = input.Position - dragStart
-			Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-	end)
-end
-
--- Controls (ESP, Hide Username, Infinity Jump)
-local espEnabled = false
--- Panel tombol atas (2 kolom, 2 baris)
-local topBtnY = 52
-local btnW, btnH, btnGap = 175, 40, 12
-local espToggle = Instance.new("TextButton", Frame)
-espToggle.Size = UDim2.new(0, btnW, 0, btnH)
-espToggle.Position = UDim2.new(0, 0, 0, topBtnY)
-espToggle.BackgroundColor3 = Theme.Colors.Button
-espToggle.Font = Theme.Fonts.Body
-espToggle.TextSize = 17
-espToggle.TextColor3 = Theme.Colors.Text
-espToggle.Text = "ESP: OFF"
-styleButton(espToggle)
-espToggle.MouseButton1Click:Connect(function()
-	espEnabled = not espEnabled
-	espToggle.Text = espEnabled and "ESP: ON" or "ESP: OFF"
-end)
-
-local hideUsername = false
-local hideUserBtn = Instance.new("TextButton", Frame)
-hideUserBtn.Size = UDim2.new(0, btnW, 0, btnH)
-hideUserBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY)
-hideUserBtn.BackgroundColor3 = Theme.Colors.Button
-hideUserBtn.Font = Theme.Fonts.Body
-hideUserBtn.TextSize = 17
-hideUserBtn.TextColor3 = Theme.Colors.Text
-hideUserBtn.Text = "Hide Username: OFF"
-styleButton(hideUserBtn)
-hideUserBtn.MouseButton1Click:Connect(function()
-	hideUsername = not hideUsername
-	hideUserBtn.Text = hideUsername and "Hide Username: ON" or "Hide Username: OFF"
-end)
-
-local infinityJumpEnabled = false
-local infinityJumpBtn = Instance.new("TextButton", Frame)
-infinityJumpBtn.Size = UDim2.new(0, btnW, 0, btnH)
-infinityJumpBtn.Position = UDim2.new(0, 0, 0, topBtnY + btnH + btnGap)
-infinityJumpBtn.BackgroundColor3 = Theme.Colors.Button
-infinityJumpBtn.Font = Theme.Fonts.Body
-infinityJumpBtn.TextSize = 17
-infinityJumpBtn.TextColor3 = Theme.Colors.Text
-infinityJumpBtn.Text = "Infinity Jump: OFF"
-styleButton(infinityJumpBtn)
-infinityJumpBtn.MouseButton1Click:Connect(function()
-	infinityJumpEnabled = not infinityJumpEnabled
-	infinityJumpBtn.Text = infinityJumpEnabled and "Infinity Jump: ON" or "Infinity Jump: OFF"
-end)
-
-local noNightEnabled = false
-local noNightBtn = Instance.new("TextButton", Frame)
-noNightBtn.Size = UDim2.new(0, btnW, 0, btnH)
-noNightBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY + btnH + btnGap)
-noNightBtn.BackgroundColor3 = Theme.Colors.Button
-noNightBtn.Font = Theme.Fonts.Body
-noNightBtn.TextSize = 17
-noNightBtn.TextColor3 = Theme.Colors.Text
-noNightBtn.Text = "No Night: OFF"
-styleButton(noNightBtn)
-noNightBtn.MouseButton1Click:Connect(function()
-	noNightEnabled = not noNightEnabled
-	noNightBtn.Text = noNightEnabled and "No Night: ON" or "No Night: OFF"
-	if not noNightEnabled then
-		Lighting.ClockTime = defaultLighting.ClockTime
-		Lighting.Brightness = defaultLighting.Brightness
-		Lighting.OutdoorAmbient = defaultLighting.OutdoorAmbient
-		Lighting.Ambient = defaultLighting.Ambient
-		Lighting.GlobalShadows = defaultLighting.GlobalShadows
-	else
-		Lighting.ClockTime = 14
-		Lighting.Brightness = 5
-		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-		Lighting.Ambient = Color3.new(1, 1, 1)
-		Lighting.GlobalShadows = false
-	end
-end)
-
--- Hue color sliders
-local function createColorSlider(parent, title, posY, defaultHue)
-	local container = Instance.new("Frame", parent)
-	container.Size = UDim2.new(1, -24, 0, 56)
-	container.Position = UDim2.new(0, 12, 0, posY)
-	container.BackgroundTransparency = 1
-
-	local label = Instance.new("TextLabel", container)
-	label.Size = UDim2.new(0, 200, 0, 20)
-	label.Position = UDim2.new(0, 0, 0, 0)
-	label.BackgroundTransparency = 1
-	label.Font = Theme.Fonts.Body
-	label.TextSize = 14
-	label.TextColor3 = Theme.Colors.MutedText
-	label.Text = title
-	label.TextXAlignment = Enum.TextXAlignment.Left
-
-	local bar = Instance.new("Frame", container)
-	-- Extend hue bar to the right edge (respect container padding only)
-	bar.Size = UDim2.new(1, 0, 0, 16)
-	bar.Position = UDim2.new(0, 0, 0, 32)
-	bar.BackgroundColor3 = Theme.Colors.InputBg
-	bar.BorderSizePixel = 0
-	createRound(bar, 8)
-	createStroke(bar, Theme.Colors.Border, 1)
-
-	local gradient = Instance.new("UIGradient", bar)
-	gradient.Color = ColorSequence.new{
-		ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
-		ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
-		ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
-		ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
-		ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
-		ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+	-- Capture default Lighting values for restoration
+	local defaultLighting = {
+		ClockTime = Lighting.ClockTime,
+		Brightness = Lighting.Brightness,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		Ambient = Lighting.Ambient,
+		GlobalShadows = Lighting.GlobalShadows,
+		FogStart = Lighting.FogStart,
+		FogEnd = Lighting.FogEnd,
+		FogColor = Lighting.FogColor,
+		ExposureCompensation = (pcall(function() return Lighting.ExposureCompensation end) and Lighting.ExposureCompensation) or 0,
 	}
 
-	local indicator = Instance.new("Frame", bar)
-	indicator.Size = UDim2.new(0, 12, 0, 12)
-	indicator.Position = UDim2.new(0, -6, 0.5, -6)
-	indicator.BackgroundColor3 = Color3.new(1, 1, 1)
-	indicator.BorderSizePixel = 0
-	createRound(indicator, 6)
-	createStroke(indicator, Theme.Colors.Border, 1)
-
-	-- Remove color preview to simplify UI
-
-	local hue = defaultHue or 0
-	local function updateIndicator()
-		indicator.Position = UDim2.new(hue, -6, 0.5, -6)
+	-- Safe GUI parent detection (prefer PlayerGui; use executor hidden UI if available)
+	local function getSafeGuiParent()
+		-- Use exploit-provided hidden UI container when available
+		local ok, res = pcall(function()
+			if typeof(gethui) == "function" then return gethui() end
+			if typeof(get_hidden_ui) == "function" then return get_hidden_ui() end
+			return nil
+		end)
+		if ok and res then return res end
+		-- Fallback and default: PlayerGui (safe in all LocalScripts)
+		local pg = localPlayer:FindFirstChildOfClass("PlayerGui") or localPlayer:WaitForChild("PlayerGui")
+		return pg
 	end
-	updateIndicator()
 
-	bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local conn
-			conn = UserInputService.InputChanged:Connect(function(i)
-				if i.UserInputType == Enum.UserInputType.MouseMovement then
-					local relX = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-					hue = relX
-					updateIndicator()
+	local function protectGui(gui)
+		pcall(function()
+			-- Some executors provide a way to protect GUI from being removed by the game
+			local hidden
+			if typeof(gethui) == "function" then
+				hidden = gethui()
+			end
+			if not hidden and typeof(get_hidden_ui) == "function" then
+				hidden = get_hidden_ui()
+			end
+			-- Only reparent if we got a valid instance
+			if typeof(hidden) == "Instance" then
+				gui.Parent = hidden
+			end
+			-- Apply executor-specific protection if available
+			if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
+				syn.protect_gui(gui)
+			end
+			if typeof(protect_gui) == "function" then
+				protect_gui(gui)
+			end
+		end)
+	end
+
+	-- Centralized theme used across the UI
+	local Theme = {
+		Colors = {
+			Background = Color3.fromRGB(28, 32, 40),
+			Surface = Color3.fromRGB(36, 40, 50),
+			Border = Color3.fromRGB(70, 78, 98),
+			Sunken = Color3.fromRGB(34, 38, 48),
+			Text = Color3.fromRGB(245, 250, 255),
+			MutedText = Color3.fromRGB(170, 180, 200),
+			InputBg = Color3.fromRGB(40, 44, 56),
+			DropdownBg = Color3.fromRGB(36, 40, 50),
+			Button = Color3.fromRGB(44, 48, 60),
+			ButtonHover = Color3.fromRGB(54, 58, 70),
+			ButtonPress = Color3.fromRGB(34, 38, 50),
+			ToggleOn = Color3.fromRGB(0, 180, 255),
+			Accent = Color3.fromRGB(0, 170, 255),
+			Shadow = Color3.fromRGB(0, 0, 0),
+			Glass = Color3.fromRGB(255, 255, 255),
+		},
+		Fonts = {
+			Title = Enum.Font.GothamBlack,
+			Body = Enum.Font.GothamMedium,
+			Icon = Enum.Font.GothamBold,
+			Nickname = Enum.Font.GothamBold,
+			Username = Enum.Font.Gotham,
+		},
+		Radius = 16,
+	}
+
+	-- Safe number conversion helper
+	local function toNum(v, default)
+		local n = tonumber(v)
+		if n == nil then return default or 0 end
+		return n
+	end
+
+	local function createRound(parent, radius)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, radius or Theme.Radius)
+		c.Parent = parent
+		return c
+	end
+
+	local function createStroke(parent, color, thickness)
+		local s = Instance.new("UIStroke")
+		s.Thickness = thickness or 1
+		s.Color = color or Theme.Colors.Border
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = parent
+		return s
+	end
+
+	local function styleButton(b, opts)
+		b.AutoButtonColor = false
+		b.BackgroundColor3 = Theme.Colors.Button
+		b.BorderSizePixel = 0
+		b.TextColor3 = Theme.Colors.Text
+		b.Font = Theme.Fonts.Body
+		createRound(b, Theme.Radius)
+		createStroke(b, Theme.Colors.Border, 1)
+		b.TextXAlignment = Enum.TextXAlignment.Center
+		b.TextYAlignment = Enum.TextYAlignment.Center
+		b.TextWrapped = true
+		b.RichText = true
+		b.ZIndex = opts and opts.z or 10
+		-- Respect persistent ON/OFF visual via Attribute "Active"
+		local function setBg(c3, t)
+			TweenService:Create(b, TweenInfo.new(t or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = c3 }):Play()
+		end
+		local function getBaseBg()
+			return b:GetAttribute("Active") and Theme.Colors.ToggleOn or Theme.Colors.Button
+		end
+		local function lighten(c, amt)
+			amt = amt or 0.08
+			return Color3.new(
+				math.clamp(c.R + (1 - c.R) * amt, 0, 1),
+				math.clamp(c.G + (1 - c.G) * amt, 0, 1),
+				math.clamp(c.B + (1 - c.B) * amt, 0, 1)
+			)
+		end
+		local function darken(c, amt)
+			amt = amt or 0.15
+			return Color3.new(
+				math.clamp(c.R * (1 - amt), 0, 1),
+				math.clamp(c.G * (1 - amt), 0, 1),
+				math.clamp(c.B * (1 - amt), 0, 1)
+			)
+		end
+		-- Set initial
+		setBg(getBaseBg(), 0)
+		-- Hover / press effects based on base color
+		b.MouseEnter:Connect(function()
+			setBg(lighten(getBaseBg(), 0.08))
+		end)
+		b.MouseLeave:Connect(function()
+			setBg(getBaseBg())
+		end)
+		b.MouseButton1Down:Connect(function()
+			setBg(darken(getBaseBg(), 0.18), 0.08)
+		end)
+		b.MouseButton1Up:Connect(function()
+			setBg(lighten(getBaseBg(), 0.08), 0.08)
+		end)
+	end
+
+	-- Helper to reflect toggle ON/OFF visually on any button
+	local function setToggleVisual(btn, isOn)
+		btn:SetAttribute("Active", isOn and true or false)
+		btn.TextColor3 = isOn and Theme.Colors.Glass or Theme.Colors.Text
+		local base = isOn and Theme.Colors.ToggleOn or Theme.Colors.Button
+		TweenService:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = base }):Play()
+	end
+
+	-- Smooth draggable helper for panels (handles fast/slow/medium drags smoothly)
+	local function makeSmoothDraggable(handle, target)
+		local dragging = false
+		local dragStart = nil
+		local startPos = nil
+		local goalPos = nil
+		local renderConn = nil
+		local moveConn = nil
+		local endConn = nil
+		local startAbs = nil
+		-- responsiveness constant: higher = snappier, still frame-rate independent
+		local responsiveness = 28
+
+		-- Clamp absolute pixel coordinates (top-left) within viewport bounds
+		local function clampAbsToViewport(absX, absY)
+			local vp = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+			local sz = target.AbsoluteSize
+			local maxX = math.max(0, vp.X - sz.X)
+			local maxY = math.max(0, vp.Y - sz.Y)
+			return math.clamp(absX, 0, maxX), math.clamp(absY, 0, maxY)
+		end
+
+		local function disconnectRender()
+			if renderConn then
+				renderConn:Disconnect()
+				renderConn = nil
+			end
+		end
+
+		local function disconnectInput()
+			if moveConn then moveConn:Disconnect() moveConn = nil end
+			if endConn then endConn:Disconnect() endConn = nil end
+		end
+
+		local function ensureRender()
+			if renderConn then return end
+			renderConn = RunService.RenderStepped:Connect(function(dt)
+				if not goalPos then return end
+				local cur = target.Position
+				local sX, sY = cur.X.Scale, cur.Y.Scale
+				local oX, oY = cur.X.Offset, cur.Y.Offset
+				local gX, gY = goalPos.X.Offset, goalPos.Y.Offset
+				-- While dragging: follow immediately (alpha=1). On release: smooth settle.
+				local alpha = dragging and 1 or (1 - math.exp(-responsiveness * (dt or 0)))
+				local nX = oX + (gX - oX) * alpha
+				local nY = oY + (gY - oY) * alpha
+				-- snap to goal when close to avoid micro-jitter
+				if math.abs(nX - gX) < 0.1 then nX = gX end
+				if math.abs(nY - gY) < 0.1 then nY = gY end
+				target.Position = UDim2.new(sX, nX, sY, nY)
+				-- If not dragging and we've reached the goal, stop updating
+				if (not dragging) and math.abs(nX - gX) < 0.1 and math.abs(nY - gY) < 0.1 then
+					goalPos = nil
+					disconnectRender()
 				end
 			end)
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					if conn then conn:Disconnect() end
-				end
-			end)
 		end
-	end)
 
-	return { getColor = function() return Color3.fromHSV(hue, 1, 1) end }
-end
-
--- Color sliders di bawah tombol
-local sliderY = topBtnY + (btnH + btnGap) * 2 + 10
-local nicknameSliders = createColorSlider(Frame, "Nickname Color:", sliderY, 0.55)
-local usernameSliders = createColorSlider(Frame, "Username Color:", sliderY + 56, 0)
-
--- ESP Core
-local espLabels = {}
-
-local function createESP(player)
-	if espLabels[player] then return end
-	local char = player.Character
-	if not char then return end
-	local head = char:FindFirstChild("Head")
-	if not head then return end
-	local billboard = Instance.new("BillboardGui")
-	billboard.Adornee = head
-	billboard.Size = UDim2.new(0, 260, 0, 64)
-	billboard.StudsOffset = Vector3.new(0, 2.8, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = head
-
-	local nameLabel = Instance.new("TextLabel", billboard)
-	nameLabel.Name = "NameLabel"
-	nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
-	nameLabel.Position = UDim2.new(0, 0, 0, 0)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Font = Theme.Fonts.Nickname -- GothamBold
-	nameLabel.TextSize = 20
-	nameLabel.Text = addSpacing(player.DisplayName, 0.6)
-	nameLabel.TextStrokeTransparency = 0.18
-	nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	nameLabel.TextColor3 = nicknameSliders.getColor()
-	nameLabel.TextWrapped = true
-
-	local userLabel = Instance.new("TextLabel", billboard)
-	userLabel.Name = "UsernameLabel"
-	userLabel.Size = UDim2.new(1, 0, 0.4, 0)
-	userLabel.Position = UDim2.new(0, 0, 0.6, 0)
-	userLabel.BackgroundTransparency = 1
-	userLabel.Font = Theme.Fonts.Username -- GothamMedium
-	userLabel.TextSize = 15
-	userLabel.Text = "@" .. addSpacing(player.Name, 0.6)
-	userLabel.TextStrokeTransparency = 0.25
-	userLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	userLabel.TextColor3 = usernameSliders.getColor()
-	userLabel.TextWrapped = true
-
-	espLabels[player] = billboard
-end
-
-local function removeESP(player)
-	if espLabels[player] then
-		espLabels[player]:Destroy()
-		espLabels[player] = nil
-	end
-end
-
-local function refreshESP()
-	if not espEnabled then
-		for _, g in pairs(esplabels or espLabels) do g:Destroy() end
-		espLabels = {}
-		return
-	end
-	local nickColor = nicknameSliders.getColor()
-	local userColor = usernameSliders.getColor()
-	for _, plr in pairs(Players:GetPlayers()) do
-		if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-			if not espLabels[plr] then
-				createESP(plr)
+		handle.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = target.Position
+				startAbs = target.AbsolutePosition
+				goalPos = startPos
+				ensureRender()
+				-- Track movement globally so we don't lose events outside the handle
+				moveConn = UserInputService.InputChanged:Connect(function(i)
+					local isMove = (i.UserInputType == Enum.UserInputType.MouseMovement) or (i.UserInputType == Enum.UserInputType.Touch)
+					if isMove and dragging and dragStart and startPos then
+						local delta = i.Position - dragStart
+						-- compute new absolute top-left position
+						local absX = startAbs.X + delta.X
+						local absY = startAbs.Y + delta.Y
+						absX, absY = clampAbsToViewport(absX, absY)
+						-- convert back to offsets relative to current scales
+						local vp = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+						local newOffX = absX - (vp.X * startPos.X.Scale)
+						local newOffY = absY - (vp.Y * startPos.Y.Scale)
+						goalPos = UDim2.new(startPos.X.Scale, newOffX, startPos.Y.Scale, newOffY)
+						-- Render loop will apply instantly while dragging
+						ensureRender()
+					end
+				end)
+				endConn = UserInputService.InputEnded:Connect(function(i)
+					if i.UserInputType == input.UserInputType then
+						dragging = false
+						disconnectInput()
+						-- keep goalPos for a tiny settle; render loop will stop itself
+					end
+				end)
 			end
-			-- Always update label content every frame for realtime effect
-			local gui = espLabels[plr]
-			if gui then
-				local n = gui:FindFirstChild("NameLabel")
-				local u = gui:FindFirstChild("UsernameLabel")
-				if n then
-					n.TextColor3 = nickColor
-					n.Text = addSpacing(plr.DisplayName, 0.6)
-				end
-				if u then
-					u.TextColor3 = userColor
-					u.Visible = not hideUsername
-					u.Text = "@" .. addSpacing(plr.Name, 0.6)
-				end
-			end
-		else
-			removeESP(plr)
-		end
-	end
-end
-
-Players.PlayerAdded:Connect(function(plr)
-	plr.CharacterAdded:Connect(function()
-		task.wait(0.25)
-		createESP(plr)
-	end)
-end)
-for _, plr in pairs(Players:GetPlayers()) do
-	plr.CharacterAdded:Connect(function()
-		task.wait(0.25)
-		createESP(plr)
-	end)
-	if plr.Character then createESP(plr) end
-end
-Players.PlayerRemoving:Connect(removeESP)
-
--- SEARCH PLAYER + DROPDOWN
-local searchY = sliderY + 56*2 + 16
-local searchBox = Instance.new("TextBox", Frame)
-searchBox.Size = UDim2.new(1, 0, 0, 36)
-searchBox.Position = UDim2.new(0, 0, 0, searchY)
-searchBox.PlaceholderText = "🔎  Search player..."
-searchBox.Font = Theme.Fonts.Body
-searchBox.TextSize = 17
-searchBox.TextColor3 = Theme.Colors.Text
-searchBox.BackgroundColor3 = Theme.Colors.InputBg
-searchBox.ClearTextOnFocus = false
-searchBox.PlaceholderColor3 = Theme.Colors.MutedText
-searchBox.ZIndex = 40
-createRound(searchBox, Theme.Radius)
-createStroke(searchBox, Theme.Colors.Border, 1)
-
-local dropdown = Instance.new("Frame", Frame)
-dropdown.Size = UDim2.new(1, 0, 0, 0)
-dropdown.Position = UDim2.new(0, 0, 0, searchY + 40)
-dropdown.BackgroundTransparency = 1
-dropdown.BorderSizePixel = 0
-dropdown.ClipsDescendants = true
-dropdown.ZIndex = 100
-dropdown.Visible = false
-local dropdownPadding = Instance.new("UIPadding", dropdown)
-dropdownPadding.PaddingTop = UDim.new(0, 0)
-dropdownPadding.PaddingBottom = UDim.new(0, 0)
-dropdownPadding.PaddingLeft = UDim.new(0, 0)
-dropdownPadding.PaddingRight = UDim.new(0, 0)
-
--- UIListLayout akan dibuat ulang setiap clearSuggestions
-
-local currentSuggestions = {}
-local function clearSuggestions()
-	for _, c in ipairs(dropdown:GetChildren()) do
-		if c:IsA("TextButton") or c:IsA("UIListLayout") then c:Destroy() end
-	end
-	currentSuggestions = {}
-	dropdown.Size = UDim2.new(0, 0, 0, 0)
-	dropdown.Visible = false
-	local newLayout = Instance.new("UIListLayout", dropdown)
-	newLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	newLayout.Padding = UDim.new(0, 12)
-	newLayout.FillDirection = Enum.FillDirection.Horizontal
-	newLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	newLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-end
-
-local selectedLabel = Instance.new("TextLabel", Frame)
-selectedLabel.Size = UDim2.new(1, 0, 0, 36)
-selectedLabel.Position = UDim2.new(0, 0, 0, searchY + 40 + 56 + 8)
-selectedLabel.BackgroundTransparency = 0.12
-selectedLabel.BackgroundColor3 = Theme.Colors.Button:lerp(Theme.Colors.Surface, 0.2)
-selectedLabel.Font = Theme.Fonts.Title
-selectedLabel.TextSize = 17
-selectedLabel.TextColor3 = Theme.Colors.Accent
-selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
-selectedLabel.Text = "  👤  <b>Selected:</b> <font color=\"#ffffff\">None</font>"
-selectedLabel.RichText = true
-selectedLabel.ZIndex = 10
-createRound(selectedLabel, Theme.Radius)
-createStroke(selectedLabel, Theme.Colors.Border, 1)
-
-local selectedPlayer = nil
-local spying = false
-
-	for _, c in ipairs(dropdown:GetChildren()) do
-		if c:IsA("TextButton") or c:IsA("UIListLayout") then c:Destroy() end
-	end
-	currentSuggestions = {}
-	dropdown.Size = UDim2.new(1, -40, 0, 0)
-	dropdown.Visible = false
-	local newLayout = Instance.new("UIListLayout", dropdown)
-	newLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	newLayout.Padding = UDim.new(0, 6)
-
-
-local function makeSuggestionButton(player)
-	local btn = Instance.new("TextButton", dropdown)
-	btn.Size = UDim2.new(1/2, 0, 1, 0) -- 2 hasil, bagi rata
-	btn.BackgroundColor3 = Theme.Colors.Button
-	btn.BorderSizePixel = 0
-	btn.Font = Theme.Fonts.Body
-	btn.TextSize = 15
-	btn.TextColor3 = Theme.Colors.Text
-	btn.Text = string.format("<font color=\"#00aaff\">👤</font> <b>%s</b>\n<font color=\"#aaaaaa\">@%s</font>", player.DisplayName, player.Name)
-	btn.RichText = true
-	btn.AutoButtonColor = false
-	btn.ZIndex = 101
-	btn.TextYAlignment = Enum.TextYAlignment.Top
-	btn.TextXAlignment = Enum.TextXAlignment.Left
-	local textPadding = Instance.new("UIPadding", btn)
-	textPadding.PaddingLeft = UDim.new(0, 8)
-	textPadding.PaddingRight = UDim.new(0, 8)
-	textPadding.PaddingTop = UDim.new(0, 6)
-	textPadding.PaddingBottom = UDim.new(0, 6)
-	createRound(btn, Theme.Radius)
-	createStroke(btn, Theme.Colors.Border, 1)
-	btn.MouseEnter:Connect(function()
-		TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.ToggleOn }):Play()
-		btn.TextColor3 = Theme.Colors.Glass
-	end)
-	btn.MouseLeave:Connect(function()
-		TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.Button }):Play()
-		btn.TextColor3 = Theme.Colors.Text
-	end)
-	btn.MouseButton1Click:Connect(function()
-		selectedPlayer = player
-		selectedLabel.Text = string.format("👤  <b>Selected:</b> <font color=\"#00aaff\">%s</font> <font color=\"#aaaaaa\">(@%s)</font>", player.DisplayName, player.Name)
-		dropdown.Visible = false
-		clearSuggestions()
-		searchBox.Text = ""
-		if spying and selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
-			camera.CameraSubject = selectedPlayer.Character.Humanoid
-		end
-	end)
-	return btn
-end
-
-local function updateSuggestions()
-	clearSuggestions()
-	local q = (searchBox.Text or ""):lower():gsub("^%s+",""):gsub("%s+$","")
-	if q == "" then return end
-	local scored = {}
-	for _, plr in pairs(Players:GetPlayers()) do
-		local d, n = plr.DisplayName, plr.Name
-		local dScore = d:lower():find(q, 1, true) and 2 or 0
-		local nScore = n:lower():find(q, 1, true) and 1 or 0
-		local bestScore = math.max(dScore, nScore)
-		if bestScore > 0 then
-			table.insert(scored, {player=plr, score=bestScore, d=d, n=n})
-		end
-	end
-	table.sort(scored, function(a, b)
-		if a.score ~= b.score then return a.score > b.score end
-		return a.d < b.d
-	end)
-	local count = math.min(2, #scored)
-	if count == 0 then return end
-	for i = 1, count do
-		local plr = scored[i].player
-		local btn = makeSuggestionButton(plr)
-		btn.LayoutOrder = i
-		table.insert(currentSuggestions, btn)
-	end
-	-- Panel width selalu selebar searchBox (1, -40)
-	dropdown.Size = UDim2.new(1, -40, 0, 56)
-	dropdown.Visible = true
-end
-
-searchBox:GetPropertyChangedSignal("Text"):Connect(updateSuggestions)
-Players.PlayerAdded:Connect(updateSuggestions)
-
--- Open/close behavior for dropdown based on focus
-searchBox.Focused:Connect(function()
-	updateSuggestions()
-end)
-searchBox.FocusLost:Connect(function(enterPressed)
-	-- Close the dropdown shortly after to allow button click to register
-	task.delay(0.1, function()
-		dropdown.Visible = false
-		dropdown.Size = UDim2.new(1, -24, 0, 0)
-		clearSuggestions()
-	end)
-end)
-
--- Predeclare buttons to avoid upvalue issues
-local teleportBtn -- set later
-local spyBtn -- set later
-
-Players.PlayerRemoving:Connect(function()
-	if selectedPlayer and not Players:FindFirstChild(selectedPlayer.Name) then
-		selectedPlayer = nil
-		selectedLabel.Text = "Selected: None"
-		if spying then
-			spying = false
-			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" end
-			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-				camera.CameraSubject = localPlayer.Character.Humanoid
-			end
-		end
-	end
-	updateSuggestions()
-end)
-
--- Teleport and Spy buttons
-
-local btnY = selectedLabel.Position.Y.Offset + selectedLabel.Size.Y.Offset + 12
-teleportBtn = Instance.new("TextButton", Frame)
-teleportBtn.Size = UDim2.new(0.48, -6, 0, 36)
-teleportBtn.Position = UDim2.new(0, 0, 0, btnY)
-teleportBtn.BackgroundColor3 = Theme.Colors.Surface
-teleportBtn.Font = Theme.Fonts.Body
-teleportBtn.TextSize = 16
-teleportBtn.TextColor3 = Theme.Colors.Text
-teleportBtn.Text = "Teleport"
-styleButton(teleportBtn)
-teleportBtn.ZIndex = 10
-
-spyBtn = Instance.new("TextButton", Frame)
-spyBtn.Size = UDim2.new(0.48, -6, 0, 36)
-spyBtn.Position = UDim2.new(0.52, 6, 0, btnY)
-spyBtn.BackgroundColor3 = Theme.Colors.Surface
-spyBtn.Font = Theme.Fonts.Body
-spyBtn.TextSize = 16
-spyBtn.TextColor3 = Theme.Colors.Text
-spyBtn.Text = "Spy: OFF"
-styleButton(spyBtn)
-spyBtn.ZIndex = 10
-
-teleportBtn.MouseButton1Click:Connect(function()
-	if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-		local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-		if myHRP then
-			myHRP.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
-		end
-	end
-end)
-
-spyBtn.MouseButton1Click:Connect(function()
-	if not selectedPlayer then return end
-	if not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid")) then return end
-	spying = not spying
-	if spying then
-		spyBtn.Text = "Spy: ON"
-		camera.CameraSubject = selectedPlayer.Character.Humanoid
-	else
-		spyBtn.Text = "Spy: OFF"
-		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-			camera.CameraSubject = localPlayer.Character.Humanoid
-		end
-	end
-end)
-
--- EMOTE FULL Toggle (posisi setelah spyBtn)
-local emoteY = btnY + 36 + 10
-local emoteToggleBtn = Instance.new("TextButton", Frame)
-emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
-emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
-emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
-emoteToggleBtn.Font = Theme.Fonts.Body
-emoteToggleBtn.TextSize = 16
-emoteToggleBtn.TextColor3 = Theme.Colors.Text
-emoteToggleBtn.Text = "EMOTE FULL: OFF"
-styleButton(emoteToggleBtn)
-emoteToggleBtn.ZIndex = 10
-
-local emoteActive = false
-local emoteAnimations = {}
-
-emoteToggleBtn.MouseButton1Click:Connect(function()
-	emoteActive = not emoteActive
-	if emoteActive then
-		emoteToggleBtn.Text = "EMOTE FULL: ON"
-		pcall(function()
-			emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
 		end)
-	else
-		emoteToggleBtn.Text = "EMOTE FULL: OFF"
-		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-			for _, anim in pairs(emoteAnimations) do
-				if type(anim) == "table" and anim.Stop then
-					pcall(function() anim:Stop() end)
-				elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
-					pcall(function() anim:Stop() end)
-				end
+
+		-- Fallback: keep old per-handle InputChanged in case some environments require it
+		handle.InputChanged:Connect(function(input)
+			local isMove = (input.UserInputType == Enum.UserInputType.MouseMovement) or (input.UserInputType == Enum.UserInputType.Touch)
+			if isMove and dragging and dragStart and startPos then
+				local delta = input.Position - dragStart
+				local absX = startAbs.X + delta.X
+				local absY = startAbs.Y + delta.Y
+				absX, absY = clampAbsToViewport(absX, absY)
+				local vp = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+				local newOffX = absX - (vp.X * startPos.X.Scale)
+				local newOffY = absY - (vp.Y * startPos.Y.Scale)
+				goalPos = UDim2.new(startPos.X.Scale, newOffX, startPos.Y.Scale, newOffY)
+				ensureRender()
 			end
-			emoteAnimations = {}
-		end
-	end
-end)
-
--- CP Creator Toggle (posisi setelah emoteToggleBtn)
-local cpCreatorY = emoteY + 38 + 10
-local cpCreatorBtn = Instance.new("TextButton", Frame)
-cpCreatorBtn.Size = UDim2.new(1, 0, 0, 38)
-cpCreatorBtn.Position = UDim2.new(0, 0, 0, cpCreatorY)
-cpCreatorBtn.BackgroundColor3 = Theme.Colors.Surface
-cpCreatorBtn.Font = Theme.Fonts.Body
-cpCreatorBtn.TextSize = 16
-cpCreatorBtn.TextColor3 = Theme.Colors.Text
-cpCreatorBtn.Text = "CP Creator: OFF"
-styleButton(cpCreatorBtn)
-cpCreatorBtn.ZIndex = 10
-
-local cpCreatorActive = false
-cpCreatorBtn.MouseButton1Click:Connect(function()
-	cpCreatorActive = not cpCreatorActive
-	if cpCreatorActive then
-		cpCreatorBtn.Text = "CP Creator: ON"
-		pcall(function()
-			loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/createcpmanual/refs/heads/main/config.lua"))()
 		end)
-	else
-		cpCreatorBtn.Text = "CP Creator: OFF"
 	end
-end)
 
-local function ensureSpyHealth()
-	if spying then
-		if not selectedPlayer or not selectedPlayer.Parent or not selectedPlayer.Character or not selectedPlayer.Character:FindFirstChild("Humanoid") then
-			spying = false
-			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" end
-			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-				camera.CameraSubject = localPlayer.Character.Humanoid
-			end
-		else
-			camera.CameraSubject = selectedPlayer.Character.Humanoid
-		end
+	-- Root GUI
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.Enabled = true
+	ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	ScreenGui.Parent = getSafeGuiParent()
+	protectGui(ScreenGui)
+
+	-- Separate ScreenGui for Fly controls so it won't be hidden by N toggle
+	local FlyGui = Instance.new("ScreenGui")
+	FlyGui.Name = "FlyGui"
+	FlyGui.ResetOnSpawn = false
+	FlyGui.Enabled = true
+	FlyGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	FlyGui.Parent = getSafeGuiParent()
+	protectGui(FlyGui)
+
+	-- Container global untuk semua BillboardGui ESP agar tidak ikut hancur saat respawn
+	local ESPContainer = Instance.new("Folder")
+	ESPContainer.Name = "ESP_Container"
+	ESPContainer.Parent = ScreenGui
+
+	-- Fly Controller Panel (hidden by default)
+	local FlyPanel = Instance.new("Frame")
+	FlyPanel.Name = "FlyPanel"
+	FlyPanel.Size = UDim2.new(0, 230, 0, 112)
+	-- Default: left-middle (16px from left, vertically centered)
+	FlyPanel.Position = UDim2.new(0, 16, 0.5, -56)
+	FlyPanel.BackgroundColor3 = Color3.fromRGB(32, 36, 44)
+	FlyPanel.BorderSizePixel = 0
+	FlyPanel.Visible = false
+	FlyPanel.Parent = FlyGui
+	createRound(FlyPanel, Theme.Radius)
+	createStroke(FlyPanel, Theme.Colors.Border, 1)
+	local flyPad = Instance.new("UIPadding", FlyPanel)
+	flyPad.PaddingTop = UDim.new(0, 10)
+	flyPad.PaddingBottom = UDim.new(0, 10)
+	flyPad.PaddingLeft = UDim.new(0, 10)
+	flyPad.PaddingRight = UDim.new(0, 10)
+
+	local FlyTitle = Instance.new("TextLabel", FlyPanel)
+	FlyTitle.Size = UDim2.new(1, -26, 0, 18)
+	FlyTitle.BackgroundTransparency = 1
+	FlyTitle.Font = Theme.Fonts.Title
+	FlyTitle.TextSize = 15
+	FlyTitle.TextColor3 = Theme.Colors.Text
+	FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
+	FlyTitle.Text = "✈️  Fly Controls"
+
+	-- Close (X) button on top-right to disable and hide panel
+	local CloseFlyBtn = Instance.new("TextButton", FlyPanel)
+	CloseFlyBtn.Size = UDim2.new(0, 22, 0, 22)
+	CloseFlyBtn.Position = UDim2.new(1, -24, 0, -2)
+	CloseFlyBtn.Text = "✕"
+	CloseFlyBtn.ZIndex = 50
+	styleButton(CloseFlyBtn)
+
+	-- Animated show/hide helpers for FlyPanel
+	local flyPanelTween
+	local flyTargetPos = FlyPanel.Position
+	local function getFlyOffscreenPos()
+		-- Slide in from middle-left (keep Y the same as target)
+		local w = FlyPanel.AbsoluteSize.X
+		local offX = - (w + 40)
+		return UDim2.new(0, offX, flyTargetPos.Y.Scale, flyTargetPos.Y.Offset)
 	end
-end
 
--- EMOTE FULL Toggle
-emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
-emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
-emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
-emoteToggleBtn.Font = Theme.Fonts.Body
-emoteToggleBtn.TextSize = 16
-emoteToggleBtn.TextColor3 = Theme.Colors.Text
-emoteToggleBtn.Text = "EMOTE FULL: OFF"
-styleButton(emoteToggleBtn)
-emoteToggleBtn.ZIndex = 10
+	local function showFlyPanel()
+		if flyPanelTween then pcall(function() flyPanelTween:Cancel() end) flyPanelTween = nil end
+		FlyPanel.Visible = true
+		-- Start from off-screen left
+		FlyPanel.Position = getFlyOffscreenPos()
+		flyPanelTween = TweenService:Create(FlyPanel, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = flyTargetPos })
+		flyPanelTween:Play()
+	end
 
-local emoteActive = false
-local emoteAnimations = {}
-
-emoteToggleBtn.MouseButton1Click:Connect(function()
-	emoteActive = not emoteActive
-	if emoteActive then
-		emoteToggleBtn.Text = "EMOTE FULL: ON"
-		pcall(function()
-			emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
+	local function hideFlyPanel()
+		if flyPanelTween then pcall(function() flyPanelTween:Cancel() end) flyPanelTween = nil end
+		local offPos = getFlyOffscreenPos()
+		local tw = TweenService:Create(FlyPanel, TweenInfo.new(0.30, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = offPos })
+		tw.Completed:Connect(function()
+			FlyPanel.Visible = false
+			-- Reset to target so next open anim starts from offscreen then lands here
+			FlyPanel.Position = flyTargetPos
 		end)
-	else
-		emoteToggleBtn.Text = "EMOTE FULL: OFF"
-		if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-			for _, anim in pairs(emoteAnimations) do
-				if type(anim) == "table" and anim.Stop then
-					pcall(function() anim:Stop() end)
-				elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
-					pcall(function() anim:Stop() end)
-				end
-			end
-			emoteAnimations = {}
-		end
+		tw:Play()
 	end
-end)
 
--- CP Creator Toggle
-local cpCreatorY = emoteY + 38 + 10
-local cpCreatorBtn = Instance.new("TextButton", Frame)
-cpCreatorBtn.Size = UDim2.new(1, 0, 0, 38)
-cpCreatorBtn.Position = UDim2.new(0, 0, 0, cpCreatorY)
-cpCreatorBtn.BackgroundColor3 = Theme.Colors.Surface
-cpCreatorBtn.Font = Theme.Fonts.Body
-cpCreatorBtn.TextSize = 16
-cpCreatorBtn.TextColor3 = Theme.Colors.Text
-cpCreatorBtn.Text = "CP Creator: OFF"
-styleButton(cpCreatorBtn)
-cpCreatorBtn.ZIndex = 10
-
-local cpCreatorActive = false
-cpCreatorBtn.MouseButton1Click:Connect(function()
-    cpCreatorActive = not cpCreatorActive
-    if cpCreatorActive then
-        cpCreatorBtn.Text = "CP Creator: ON"
-        pcall(function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/createcpmanual/refs/heads/main/config.lua"))()
-        end)
-    else
-        cpCreatorBtn.Text = "CP Creator: OFF"
-    end
-end)
-
--- Toggle panel with key (N)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed and input.KeyCode == Enum.KeyCode.N then
-		ScreenGui.Enabled = not ScreenGui.Enabled
-		if ScreenGui.Enabled then updateSuggestions() end
-		if not ScreenGui.Enabled and spying then
-			spying = true
-			if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: ON" end
-			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-				camera.CameraSubject = localPlayer.Character.Humanoid
+	CloseFlyBtn.MouseButton1Click:Connect(function()
+		-- Disable via close: animated hide, properly stop flight using unified cleanup,
+		-- and turn off the main Fly Mode toggle so states restore correctly
+		hideFlyPanel()
+		pcall(function()
+			if flyActive and stopFly then
+				stopFly()
 			end
+		end)
+		if flyModeBtn and flyModeBtn.Parent then
+			flyModeEnabled = false
+			flyModeBtn.Text = "Fly Mode: OFF"
+			setToggleVisual(flyModeBtn, false)
 		end
-	end
-end)
+	end)
 
--- Main Loop
-RunService.RenderStepped:Connect(function()
-	refreshESP()
-	if noNightEnabled then
+	-- Speed row: [-] [Speed: XX] [+] (aligned neatly)
+	local SpeedRow = Instance.new("Frame", FlyPanel)
+	SpeedRow.Name = "SpeedRow"
+	SpeedRow.Size = UDim2.new(1, 0, 0, 28)
+	SpeedRow.Position = UDim2.new(0, 0, 0, 26)
+	SpeedRow.BackgroundTransparency = 1
+	local speedLayout = Instance.new("UIListLayout", SpeedRow)
+	speedLayout.FillDirection = Enum.FillDirection.Horizontal
+	speedLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	speedLayout.Padding = UDim.new(0, 8)
+
+	local FlyMinusBtn = Instance.new("TextButton", SpeedRow)
+	FlyMinusBtn.Size = UDim2.new(0.2, 0, 1, 0)
+	FlyMinusBtn.Text = "-"
+	styleButton(FlyMinusBtn)
+
+	local FlySpeedLabel = Instance.new("TextLabel", SpeedRow)
+	-- Subtract 16px to exactly compensate 2x 8px gaps from layout
+	FlySpeedLabel.Size = UDim2.new(0.6, -16, 1, 0)
+	FlySpeedLabel.BackgroundTransparency = 0.08
+	FlySpeedLabel.BackgroundColor3 = Theme.Colors.Sunken
+	FlySpeedLabel.Font = Theme.Fonts.Body
+	FlySpeedLabel.TextSize = 13
+	FlySpeedLabel.TextColor3 = Theme.Colors.MutedText
+	FlySpeedLabel.Text = "Speed: 60"
+	FlySpeedLabel.TextXAlignment = Enum.TextXAlignment.Center
+	FlySpeedLabel.TextYAlignment = Enum.TextYAlignment.Center
+	createRound(FlySpeedLabel, Theme.Radius)
+	createStroke(FlySpeedLabel, Theme.Colors.Border, 1)
+
+	local FlyPlusBtn = Instance.new("TextButton", SpeedRow)
+	FlyPlusBtn.Size = UDim2.new(0.2, 0, 1, 0)
+	FlyPlusBtn.Text = "+"
+	styleButton(FlyPlusBtn)
+
+	-- Action row: [Fly] [Unfly] (perfectly even)
+	local ActionRow = Instance.new("Frame", FlyPanel)
+	ActionRow.Name = "ActionRow"
+	ActionRow.Size = UDim2.new(1, 0, 0, 32)
+	ActionRow.Position = UDim2.new(0, 0, 0, 60)
+	ActionRow.BackgroundTransparency = 1
+	local actionLayout = Instance.new("UIListLayout", ActionRow)
+	actionLayout.FillDirection = Enum.FillDirection.Horizontal
+	actionLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	actionLayout.Padding = UDim.new(0, 8)
+
+	local FlyStartBtn = Instance.new("TextButton", ActionRow)
+	-- Split evenly; subtract 8px total padding across the middle
+	FlyStartBtn.Size = UDim2.new(0.5, -4, 1, 0)
+	FlyStartBtn.Text = "Fly"
+	styleButton(FlyStartBtn)
+
+	local FlyStopBtn = Instance.new("TextButton", ActionRow)
+	FlyStopBtn.Size = UDim2.new(0.5, -4, 1, 0)
+	FlyStopBtn.Text = "Unfly"
+	styleButton(FlyStopBtn)
+
+	-- Smooth draggable FlyPanel via title
+	makeSmoothDraggable(FlyTitle, FlyPanel)
+
+	local Frame = Instance.new("Frame", ScreenGui)
+	Frame.Size = UDim2.new(0, 400, 0, 520)
+	-- Default: left side, below FlyPanel default with some gap
+	-- FlyPanel is centered vertically (0.5). Its height is 112, so bottom is at +56 from center.
+	-- Place this panel's top ~+80 from center for clear spacing.
+	Frame.Position = UDim2.new(0, 16, 0.5, 80)
+	Frame.BackgroundColor3 = Theme.Colors.Surface:Lerp(Theme.Colors.Background, 0.25)
+	Frame.BorderSizePixel = 0
+	Frame.ClipsDescendants = true
+	createRound(Frame, Theme.Radius)
+	createStroke(Frame, Theme.Colors.Border, 1)
+	Frame.ZIndex = 1
+	local framePadding = Instance.new("UIPadding", Frame)
+	framePadding.PaddingTop = UDim.new(0, 12)
+	framePadding.PaddingBottom = UDim.new(0, 12)
+	framePadding.PaddingLeft = UDim.new(0, 16)
+	framePadding.PaddingRight = UDim.new(0, 16)
+
+
+
+
+	-- TitleBar: draggable panel
+	local TitleBar = Instance.new("Frame", Frame)
+	TitleBar.Size = UDim2.new(1, 0, 0, 40)
+	TitleBar.BackgroundColor3 = Theme.Colors.Background
+	TitleBar.BorderSizePixel = 0
+	createRound(TitleBar, Theme.Radius)
+	createStroke(TitleBar, Theme.Colors.Border, 1)
+	TitleBar.ZIndex = 2
+	local Title = Instance.new("TextLabel", TitleBar)
+	Title.Size = UDim2.new(1, 0, 1, 0)
+	Title.BackgroundTransparency = 1
+	Title.Font = Theme.Fonts.Title
+	Title.TextSize = 18
+	Title.Text = "ADMIN MENU ART1LE"
+	Title.TextColor3 = Theme.Colors.Text
+	Title.TextXAlignment = Enum.TextXAlignment.Center
+	Title.Position = UDim2.new(0, 0, 0, 0)
+	Title.ZIndex = 3
+
+	makeSmoothDraggable(TitleBar, Frame)
+
+	-- Controls (ESP, Hide Username, Infinity Jump)
+	-- Tabbed UI: TabBar + Pages
+	local TabBar = Instance.new("Frame", Frame)
+	TabBar.Size = UDim2.new(1, 0, 0, 36)
+	TabBar.Position = UDim2.new(0, 0, 0, 52) -- below TitleBar (40) + padding (12)
+	TabBar.BackgroundColor3 = Theme.Colors.Surface
+	TabBar.BorderSizePixel = 0
+	createRound(TabBar, Theme.Radius)
+	createStroke(TabBar, Theme.Colors.Border, 1)
+	TabBar.ZIndex = 2
+
+	local Pages = Instance.new("Folder", Frame)
+	Pages.Name = "Pages"
+
+	local MainPage = Instance.new("Frame", Pages)
+	MainPage.Name = "MainPage"
+	MainPage.Size = UDim2.new(1, 0, 1, - (52 + 36 + 16))
+	MainPage.Position = UDim2.new(0, 0, 0, 52 + 36 + 8)
+	MainPage.BackgroundTransparency = 1
+	MainPage.Visible = true
+
+	local PlayersPage = Instance.new("Frame", Pages)
+	PlayersPage.Name = "PlayersPage"
+	PlayersPage.Size = MainPage.Size
+	PlayersPage.Position = MainPage.Position
+	PlayersPage.BackgroundTransparency = 1
+	PlayersPage.Visible = false
+
+	local ExtrasPage = Instance.new("Frame", Pages)
+	ExtrasPage.Name = "ExtrasPage"
+	ExtrasPage.Size = MainPage.Size
+	ExtrasPage.Position = MainPage.Position
+	ExtrasPage.BackgroundTransparency = 1
+	ExtrasPage.Visible = false
+
+	-- New Visual tab
+	local VisualPage = Instance.new("Frame", Pages)
+	VisualPage.Name = "VisualPage"
+	VisualPage.Size = MainPage.Size
+	VisualPage.Position = MainPage.Position
+	VisualPage.BackgroundTransparency = 1
+	VisualPage.Visible = false
+
+	-- VisualPage layout: stack buttons section and sliders section vertically
+	local VisualStack = Instance.new("UIListLayout", VisualPage)
+	VisualStack.FillDirection = Enum.FillDirection.Vertical
+	VisualStack.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	VisualStack.VerticalAlignment = Enum.VerticalAlignment.Top
+	VisualStack.Padding = UDim.new(0, 10)
+
+	local VisualButtons = Instance.new("Frame", VisualPage)
+	VisualButtons.Name = "VisualButtons"
+	VisualButtons.Size = UDim2.new(1, 0, 0, 0)
+	VisualButtons.AutomaticSize = Enum.AutomaticSize.Y
+	VisualButtons.BackgroundTransparency = 1
+	-- Grid only applies to buttons container, not the whole VisualPage
+	local VisualButtonsGrid = Instance.new("UIGridLayout", VisualButtons)
+	VisualButtonsGrid.CellSize = UDim2.new(0, 178, 0, 40)
+	VisualButtonsGrid.CellPadding = UDim2.new(0, 12, 0, 12)
+	VisualButtonsGrid.FillDirection = Enum.FillDirection.Horizontal
+	VisualButtonsGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	VisualButtonsGrid.VerticalAlignment = Enum.VerticalAlignment.Top
+	VisualButtonsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local VisualSliders = Instance.new("Frame", VisualPage)
+	VisualSliders.Name = "VisualSliders"
+	VisualSliders.Size = UDim2.new(1, 0, 0, 0)
+	VisualSliders.AutomaticSize = Enum.AutomaticSize.Y
+	VisualSliders.BackgroundTransparency = 1
+	local VisualSlidersPad = Instance.new("UIPadding", VisualSliders)
+	VisualSlidersPad.PaddingLeft = UDim.new(0, 12)
+	VisualSlidersPad.PaddingRight = UDim.new(0, 12)
+	VisualSlidersPad.PaddingTop = UDim.new(0, 0)
+	VisualSlidersPad.PaddingBottom = UDim.new(0, 8)
+	local VisualSlidersList = Instance.new("UIListLayout", VisualSliders)
+	VisualSlidersList.FillDirection = Enum.FillDirection.Vertical
+	VisualSlidersList.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	VisualSlidersList.VerticalAlignment = Enum.VerticalAlignment.Top
+	VisualSlidersList.Padding = UDim.new(0, 8)
+
+	-- Uniform grid layout for Main, Visual, and Extras pages so buttons align neatly
+	local function setupPageGrid(page)
+		if not page then return end
+		if page:FindFirstChild("_PageGrid") then return end
+		local pad = Instance.new("UIPadding")
+		pad.Name = "_PagePad"
+		pad.PaddingTop = UDim.new(0, 8)
+		pad.PaddingBottom = UDim.new(0, 8)
+		pad.PaddingLeft = UDim.new(0, 0)
+		pad.PaddingRight = UDim.new(0, 0)
+		pad.Parent = page
+
+		local grid = Instance.new("UIGridLayout")
+		grid.Name = "_PageGrid"
+		-- Frame inner width is 400 - padding(16+16) = 368; 2 columns with 12px gap => (368 - 12) / 2 = 178
+		grid.CellSize = UDim2.new(0, 178, 0, 40)
+		grid.CellPadding = UDim2.new(0, 12, 0, 12)
+		grid.FillDirection = Enum.FillDirection.Horizontal
+		grid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		grid.VerticalAlignment = Enum.VerticalAlignment.Top
+		grid.SortOrder = Enum.SortOrder.LayoutOrder
+		grid.Parent = page
+	end
+
+	setupPageGrid(MainPage)
+	setupPageGrid(ExtrasPage)
+
+	-- Tab buttons
+	local function makeTabButton(txt, xScale)
+		local b = Instance.new("TextButton", TabBar)
+		b.Size = UDim2.new(1/4, -6, 1, -8)
+		b.Position = UDim2.new(xScale, 2, 0, 4)
+		b.BackgroundColor3 = Theme.Colors.Button
+		b.TextColor3 = Theme.Colors.Text
+		b.Font = Theme.Fonts.Body
+		b.TextSize = 15
+		b.Text = txt
+		b.AutoButtonColor = false
+		createRound(b, Theme.Radius)
+		createStroke(b, Theme.Colors.Border, 1)
+		b.ZIndex = 3
+		return b
+	end
+
+	local tabMainBtn = makeTabButton("Main", 0)
+	local tabPlayersBtn = makeTabButton("Players", 1/4)
+	local tabVisualBtn = makeTabButton("Visual", 2/4)
+	local tabExtrasBtn = makeTabButton("Extras", 3/4)
+
+	local function setTabActive(tab)
+		local function sel(btn, active)
+			local target = active and Theme.Colors.ToggleOn or Theme.Colors.Button
+			TweenService:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = target }):Play()
+			btn.TextColor3 = active and Theme.Colors.Glass or Theme.Colors.Text
+		end
+		local main = (tab == "Main")
+		local players = (tab == "Players")
+		local visual = (tab == "Visual")
+		local extras = (tab == "Extras")
+		MainPage.Visible = main
+		PlayersPage.Visible = players
+		VisualPage.Visible = visual
+		ExtrasPage.Visible = extras
+		-- If leaving Players tab, clear dropdown and focus
+		if not players then
+			if searchBox then searchBox:ReleaseFocus() end
+			if typeof(clearSuggestions) == "function" then clearSuggestions() end
+			if dropdown then dropdown.Visible = false end
+			pendingSelect = false
+		end
+		sel(tabMainBtn, main)
+		sel(tabPlayersBtn, players)
+		sel(tabVisualBtn, visual)
+		sel(tabExtrasBtn, extras)
+	end
+
+	tabMainBtn.MouseButton1Click:Connect(function() setTabActive("Main") end)
+	tabPlayersBtn.MouseButton1Click:Connect(function() setTabActive("Players") end)
+	tabVisualBtn.MouseButton1Click:Connect(function() setTabActive("Visual") end)
+	tabExtrasBtn.MouseButton1Click:Connect(function() setTabActive("Extras") end)
+
+	setTabActive("Main")
+
+	-- Controls (ESP, Hide Username, Infinity Jump)
+	local espEnabled = false
+	-- Panel tombol atas (2 kolom)
+	local topBtnY = 8
+	local btnW, btnH, btnGap = 175, 40, 12
+	-- Move ESP to Visual tab
+	local espToggle = Instance.new("TextButton", VisualButtons)
+	espToggle.Size = UDim2.new(0, btnW, 0, btnH)
+	espToggle.LayoutOrder = 1
+	espToggle.BackgroundColor3 = Theme.Colors.Button
+	espToggle.Font = Theme.Fonts.Body
+	espToggle.TextSize = 17
+	espToggle.TextColor3 = Theme.Colors.Text
+	espToggle.Text = "ESP: OFF"
+	styleButton(espToggle)
+	espToggle.MouseButton1Click:Connect(function()
+		espEnabled = not espEnabled
+		espToggle.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+		setToggleVisual(espToggle, espEnabled)
+	end)
+
+	-- ESP update mode: Realtime vs Optimized (throttle)
+	local espRealtime = true
+	local espModeBtn = Instance.new("TextButton", VisualButtons)
+	espModeBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	espModeBtn.LayoutOrder = 3
+	espModeBtn.BackgroundColor3 = Theme.Colors.Button
+	espModeBtn.Font = Theme.Fonts.Body
+	espModeBtn.TextSize = 17
+	espModeBtn.TextColor3 = Theme.Colors.Text
+	espModeBtn.Text = "ESP Mode: Real"
+	styleButton(espModeBtn)
+	setToggleVisual(espModeBtn, espRealtime)
+	espModeBtn.MouseButton1Click:Connect(function()
+		espRealtime = not espRealtime
+		espModeBtn.Text = espRealtime and "ESP Mode: Real" or "ESP Mode: Opt"
+		setToggleVisual(espModeBtn, espRealtime)
+	end)
+
+	local hideUsername = false
+	local hideUserBtn = Instance.new("TextButton", VisualButtons)
+	hideUserBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	hideUserBtn.LayoutOrder = 2
+	hideUserBtn.BackgroundColor3 = Theme.Colors.Button
+	hideUserBtn.Font = Theme.Fonts.Body
+	hideUserBtn.TextSize = 17
+	hideUserBtn.TextColor3 = Theme.Colors.Text
+	hideUserBtn.Text = "Hide Username: OFF"
+	styleButton(hideUserBtn)
+	hideUserBtn.MouseButton1Click:Connect(function()
+		hideUsername = not hideUsername
+		hideUserBtn.Text = hideUsername and "Hide Username: ON" or "Hide Username: OFF"
+		setToggleVisual(hideUserBtn, hideUsername)
+	end)
+
+	local infinityJumpEnabled = false
+	local infinityJumpBtn = Instance.new("TextButton", MainPage)
+	infinityJumpBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	infinityJumpBtn.Position = UDim2.new(0, 0, 0, topBtnY)
+	infinityJumpBtn.BackgroundColor3 = Theme.Colors.Button
+	infinityJumpBtn.Font = Theme.Fonts.Body
+	infinityJumpBtn.TextSize = 17
+	infinityJumpBtn.TextColor3 = Theme.Colors.Text
+	infinityJumpBtn.Text = "Infinity Jump: OFF"
+	styleButton(infinityJumpBtn)
+	infinityJumpBtn.MouseButton1Click:Connect(function()
+		infinityJumpEnabled = not infinityJumpEnabled
+		infinityJumpBtn.Text = infinityJumpEnabled and "Infinity Jump: ON" or "Infinity Jump: OFF"
+		setToggleVisual(infinityJumpBtn, infinityJumpEnabled)
+	end)
+
+	local noNightEnabled = false
+	local noNightBtn = Instance.new("TextButton", VisualButtons)
+	noNightBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	noNightBtn.LayoutOrder = 4
+	noNightBtn.BackgroundColor3 = Theme.Colors.Button
+	noNightBtn.Font = Theme.Fonts.Body
+	noNightBtn.TextSize = 17
+	noNightBtn.TextColor3 = Theme.Colors.Text
+	noNightBtn.Text = "No Night: OFF"
+	styleButton(noNightBtn)
+	-- FullBright + AntiFog lock helpers
+	local desiredLighting = nil
+	local lightingChangedConn = nil
+
+	local function applyFullBrightAntiFog()
 		Lighting.ClockTime = 14
 		Lighting.Brightness = 5
 		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
 		Lighting.Ambient = Color3.new(1, 1, 1)
 		Lighting.GlobalShadows = false
+		Lighting.FogStart = 0
+		Lighting.FogEnd = 1e6
+		Lighting.FogColor = Color3.new(1, 1, 1)
+		pcall(function() Lighting.ExposureCompensation = 0.3 end)
 	end
-	ensureSpyHealth()
-	-- Panel utama auto-resize mengikuti konten
-	local cpBottom = cpCreatorBtn.Position.Y.Offset + cpCreatorBtn.Size.Y.Offset
-	Frame.Size = UDim2.new(0, 400, 0, cpBottom + 28)
-end)
 
--- Infinity Jump
-local function onJumpRequest()
-	if infinityJumpEnabled then
-		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	local function startLightingLock()
+		desiredLighting = {
+			ClockTime = 14,
+			Brightness = 5,
+			OutdoorAmbient = Color3.new(1, 1, 1),
+			Ambient = Color3.new(1, 1, 1),
+			GlobalShadows = false,
+			FogStart = 0,
+			FogEnd = 1e6,
+			FogColor = Color3.new(1, 1, 1),
+			ExposureCompensation = 0.3,
+		}
+		applyFullBrightAntiFog()
+		if lightingChangedConn then lightingChangedConn:Disconnect() end
+		lightingChangedConn = Lighting.Changed:Connect(function(prop)
+			if not noNightEnabled then return end
+			local desired = desiredLighting and desiredLighting[prop]
+			if desired ~= nil then
+				local current = Lighting[prop]
+				if typeof(desired) == "Color3" then
+					if current.R ~= desired.R or current.G ~= desired.G or current.B ~= desired.B then
+						Lighting[prop] = desired
+					end
+				else
+					if current ~= desired then
+						Lighting[prop] = desired
+					end
+				end
+			end
+		end)
+	end
+
+	local function stopLightingLock()
+		if lightingChangedConn then lightingChangedConn:Disconnect() lightingChangedConn = nil end
+		desiredLighting = nil
+	end
+
+	noNightBtn.MouseButton1Click:Connect(function()
+		noNightEnabled = not noNightEnabled
+		noNightBtn.Text = noNightEnabled and "No Night: ON" or "No Night: OFF"
+		setToggleVisual(noNightBtn, noNightEnabled)
+		if not noNightEnabled then
+			stopLightingLock()
+			Lighting.ClockTime = defaultLighting.ClockTime
+			Lighting.Brightness = defaultLighting.Brightness
+			Lighting.OutdoorAmbient = defaultLighting.OutdoorAmbient
+			Lighting.Ambient = defaultLighting.Ambient
+			Lighting.GlobalShadows = defaultLighting.GlobalShadows
+			Lighting.FogStart = defaultLighting.FogStart
+			Lighting.FogEnd = defaultLighting.FogEnd
+			Lighting.FogColor = defaultLighting.FogColor
+			pcall(function() Lighting.ExposureCompensation = defaultLighting.ExposureCompensation end)
+		else
+			startLightingLock()
+		end
+	end)
+
+	-- Third row of buttons (Godmode and Noclip)
+	local godmodeEnabled = false
+	local godmodeBtn = Instance.new("TextButton", MainPage)
+	godmodeBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	godmodeBtn.Position = UDim2.new(0, 0, 0, topBtnY + (btnH + btnGap) * 1)
+	godmodeBtn.BackgroundColor3 = Theme.Colors.Button
+	godmodeBtn.Font = Theme.Fonts.Body
+	godmodeBtn.TextSize = 17
+	godmodeBtn.TextColor3 = Theme.Colors.Text
+	godmodeBtn.Text = "Godmode: OFF"
+	styleButton(godmodeBtn)
+	godmodeBtn.MouseButton1Click:Connect(function()
+		godmodeEnabled = not godmodeEnabled
+		godmodeBtn.Text = godmodeEnabled and "Godmode: ON" or "Godmode: OFF"
+		setToggleVisual(godmodeBtn, godmodeEnabled)
+		
+		local character = localPlayer.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				if godmodeEnabled then
+					-- Enable godmode (health + no fall damage without PlatformStand)
+					humanoid.MaxHealth = math.huge
+					humanoid.Health = math.huge
+					-- Remove all damage-dealing connections including fall damage
+					pcall(function()
+						for _, connection in pairs(getconnections(humanoid.HealthChanged)) do
+							connection:Disable()
+						end
+						for _, connection in pairs(getconnections(humanoid.Died)) do
+							connection:Disable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+							connection:Disable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+							connection:Disable()
+						end
+					end)
+				else
+					-- Disable godmode
+					humanoid.MaxHealth = 100
+					humanoid.Health = 100
+					-- Re-enable damage connections
+					pcall(function()
+						for _, connection in pairs(getconnections(humanoid.HealthChanged)) do
+							connection:Enable()
+						end
+						for _, connection in pairs(getconnections(humanoid.Died)) do
+							connection:Enable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+							connection:Enable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+							connection:Enable()
+						end
+					end)
+				end
+			end
+		end
+	end)
+
+	local noclipEnabled = false
+	local noclipBtn = Instance.new("TextButton", MainPage)
+	noclipBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	noclipBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY + (btnH + btnGap) * 1)
+	noclipBtn.BackgroundColor3 = Theme.Colors.Button
+	noclipBtn.Font = Theme.Fonts.Body
+	noclipBtn.TextSize = 17
+	noclipBtn.TextColor3 = Theme.Colors.Text
+	noclipBtn.Text = "Noclip: OFF"
+	styleButton(noclipBtn)
+	-- Track original collision states to restore later
+	local noclipOriginalCollision = {}
+	local noclipDescAddedConn = nil
+
+	local function applyNoclipToCharacter()
+		local char = localPlayer.Character
+		if not char then return end
+		-- clear previous
+		if noclipDescAddedConn then noclipDescAddedConn:Disconnect() noclipDescAddedConn = nil end
+		noclipOriginalCollision = {}
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				noclipOriginalCollision[part] = part.CanCollide
+				part.CanCollide = false
+			end
+		end
+		noclipDescAddedConn = char.DescendantAdded:Connect(function(d)
+			if d:IsA("BasePart") then
+				noclipOriginalCollision[d] = d.CanCollide
+				d.CanCollide = false
+			end
+		end)
+	end
+
+	local function disableNoclipRestore()
+		-- restore original collision states
+		for part, state in pairs(noclipOriginalCollision) do
+			if part and part.Parent and part:IsDescendantOf(localPlayer.Character or game) then
+				pcall(function() part.CanCollide = state end)
+			end
+		end
+		noclipOriginalCollision = {}
+		if noclipDescAddedConn then noclipDescAddedConn:Disconnect() noclipDescAddedConn = nil end
+	end
+
+	noclipBtn.MouseButton1Click:Connect(function()
+		noclipEnabled = not noclipEnabled
+		noclipBtn.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+		setToggleVisual(noclipBtn, noclipEnabled)
+		if noclipEnabled then
+			applyNoclipToCharacter()
+		else
+			disableNoclipRestore()
+		end
+	end)
+
+	-- Fourth row of buttons (No Fall Damage)
+	local noFallDamageEnabled = false
+	local noFallDamageBtn = Instance.new("TextButton", MainPage)
+	noFallDamageBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	noFallDamageBtn.Position = UDim2.new(0, 0, 0, topBtnY + (btnH + btnGap) * 2)
+	noFallDamageBtn.BackgroundColor3 = Theme.Colors.Button
+	noFallDamageBtn.Font = Theme.Fonts.Body
+	noFallDamageBtn.TextSize = 17
+	noFallDamageBtn.TextColor3 = Theme.Colors.Text
+	noFallDamageBtn.Text = "No Fall Damage: OFF"
+	styleButton(noFallDamageBtn)
+	noFallDamageBtn.MouseButton1Click:Connect(function()
+		noFallDamageEnabled = not noFallDamageEnabled
+		noFallDamageBtn.Text = noFallDamageEnabled and "No Fall Damage: ON" or "No Fall Damage: OFF"
+		setToggleVisual(noFallDamageBtn, noFallDamageEnabled)
+		
+		local character = localPlayer.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				if noFallDamageEnabled then
+					-- Enable fall damage protection without PlatformStand
+					-- Disable falling connections that cause damage
+					pcall(function()
+						for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+							connection:Disable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+							connection:Disable()
+						end
+					end)
+				else
+					-- Re-enable falling connections
+					pcall(function()
+						for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+							connection:Enable()
+						end
+						for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+							connection:Enable()
+						end
+					end)
+				end
+			end
+		end
+	end)
+
+	-- Invisible toggle (LocalTransparencyModifier)
+	local invisibleEnabled = false
+	local invisibleBtn = Instance.new("TextButton", MainPage)
+	invisibleBtn.Size = UDim2.new(0, btnW, 0, btnH)
+	invisibleBtn.Position = UDim2.new(0, btnW + btnGap, 0, topBtnY + (btnH + btnGap) * 2)
+	invisibleBtn.BackgroundColor3 = Theme.Colors.Button
+	invisibleBtn.Font = Theme.Fonts.Body
+	invisibleBtn.TextSize = 17
+	invisibleBtn.TextColor3 = Theme.Colors.Text
+	invisibleBtn.Text = "Invisible: OFF"
+	styleButton(invisibleBtn)
+
+	local function setInvisible(state)
+		local char = localPlayer.Character
+		if not char then return end
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = state and 1 or 0
+			end
 		end
 	end
-end
-UserInputService.JumpRequest:Connect(onJumpRequest)
 
-updateSuggestions()
+	invisibleBtn.MouseButton1Click:Connect(function()
+		invisibleEnabled = not invisibleEnabled
+		invisibleBtn.Text = invisibleEnabled and "Invisible: ON" or "Invisible: OFF"
+		setToggleVisual(invisibleBtn, invisibleEnabled)
+		setInvisible(invisibleEnabled)
+	end)
+
+	localPlayer.CharacterAdded:Connect(function()
+		if invisibleEnabled then
+			task.wait(0.2)
+			setInvisible(true)
+		end
+	end)
+
+	-- Hue color sliders
+	local function createColorSlider(parent, title, defaultHue)
+		local container = Instance.new("Frame", parent)
+		container.Size = UDim2.new(1, 0, 0, 56)
+		container.AutomaticSize = Enum.AutomaticSize.None
+		container.BackgroundTransparency = 1
+
+		local label = Instance.new("TextLabel", container)
+		label.Size = UDim2.new(0, 200, 0, 20)
+		label.Position = UDim2.new(0, 0, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Theme.Fonts.Body
+		label.TextSize = 14
+		label.TextColor3 = Theme.Colors.MutedText
+		label.Text = title
+		label.TextXAlignment = Enum.TextXAlignment.Left
+
+		local bar = Instance.new("Frame", container)
+		bar.Size = UDim2.new(1, 0, 0, 16)
+		bar.Position = UDim2.new(0, 0, 0, 32)
+		bar.BackgroundColor3 = Theme.Colors.InputBg
+		bar.BorderSizePixel = 0
+		createRound(bar, 8)
+		createStroke(bar, Theme.Colors.Border, 1)
+
+		local gradient = Instance.new("UIGradient", bar)
+		gradient.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+			ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+			ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+			ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+			ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+			ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+		}
+
+		local indicator = Instance.new("Frame", bar)
+		indicator.Size = UDim2.new(0, 12, 0, 12)
+		indicator.Position = UDim2.new(0, -6, 0.5, -6)
+		indicator.BackgroundColor3 = Color3.new(1, 1, 1)
+		indicator.BorderSizePixel = 0
+		createRound(indicator, 6)
+		createStroke(indicator, Theme.Colors.Border, 1)
+
+		-- Remove color preview to simplify UI
+
+		local hue = defaultHue or 0
+		local function updateIndicator()
+			indicator.Position = UDim2.new(hue, -6, 0.5, -6)
+		end
+		updateIndicator()
+
+		bar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				local conn
+				conn = UserInputService.InputChanged:Connect(function(i)
+					if i.UserInputType == Enum.UserInputType.MouseMovement then
+						local relX = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+						hue = relX
+						updateIndicator()
+					end
+				end)
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						if conn then conn:Disconnect() end
+					end
+				end)
+			end
+		end)
+
+		return { getColor = function() return Color3.fromHSV(hue, 1, 1) end }
+	end
+
+	-- Color sliders di bawah tombol (adjusted for 4 rows of buttons)
+	local nicknameSliders = createColorSlider(VisualSliders, "Nickname Color:", 0.55)
+	-- Username color slider is placed directly under nickname slider (stacked vertically)
+	local usernameSliders = createColorSlider(VisualSliders, "Username Color:", 0.33)
+
+	-- ESP Core
+	local espLabels = {}
+
+	-- Helper: add spacing between characters for readability in labels
+	local function addSpacing(text, spacing)
+		spacing = spacing or 0
+		-- simple spacing by inserting spaces; ignore if text not string
+		if type(text) ~= "string" then return tostring(text) end
+		if spacing <= 0 then return text end
+		return (text:gsub("", string.rep(" ", math.floor(spacing * 2))))
+	end
+
+	-- Helper: insert subtle thin spaces (hair-space) between characters for cleaner look
+	local function addThinSpacing(text)
+		if type(text) ~= "string" then return tostring(text) end
+		local ok, hair = pcall(function() return utf8.char(0x200A) end) -- Hair Space
+		if not ok or not hair then hair = " " end
+		-- Insert after each non-space char, then trim the trailing hair
+		local spaced = (text:gsub("(%S)", "%1" .. hair))
+		-- Remove last added hair-space if present
+		return spaced:sub(1, #spaced - #hair)
+	end
+
+	-- Helper: cari Adornee yang valid (Head lebih diutamakan, fallback HRP)
+	local function getAdorneeForPlayer(plr)
+		local char = plr and plr.Character
+		if not char then return nil end
+		return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function createESP(player)
+		if espLabels[player] then return end
+		-- Buat BillboardGui meskipun Head/HRP belum ada; Adornee akan di-set saat tersedia
+		local billboard = Instance.new("BillboardGui")
+		billboard.Adornee = getAdorneeForPlayer(player)
+		billboard.Size = UDim2.new(0, 260, 0, 64)
+		billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = ESPContainer
+		-- Add UIScale for distance-based readability
+		local uiScale = Instance.new("UIScale")
+		uiScale.Name = "_ESPUIScale"
+		uiScale.Scale = 1
+		uiScale.Parent = billboard
+
+		local nameLabel = Instance.new("TextLabel", billboard)
+		nameLabel.Name = "NameLabel"
+		nameLabel.Size = UDim2.new(1, 0, 0.6, 0)
+		nameLabel.Position = UDim2.new(0, 0, 0, 0)
+		nameLabel.BackgroundTransparency = 1
+		-- Readable, consistent font
+		nameLabel.Font = Enum.Font.GothamBold
+		nameLabel.TextSize = 20
+		nameLabel.Text = player.DisplayName
+		nameLabel.TextStrokeTransparency = 0.18
+		nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		nameLabel.TextColor3 = nicknameSliders.getColor()
+		nameLabel.TextWrapped = true
+		nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+		local userLabel = Instance.new("TextLabel", billboard)
+		userLabel.Name = "UsernameLabel"
+		userLabel.Size = UDim2.new(1, 0, 0.4, 0)
+		userLabel.Position = UDim2.new(0, 0, 0.6, 0)
+		userLabel.BackgroundTransparency = 1
+		-- Use a slightly more open font
+		userLabel.Font = Enum.Font.SourceSansSemibold
+		userLabel.TextSize = 16
+		userLabel.Text = "@" .. addThinSpacing(player.Name)
+		userLabel.TextStrokeTransparency = 0.25
+		userLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		userLabel.TextColor3 = usernameSliders.getColor()
+		userLabel.TextWrapped = true
+		userLabel.TextXAlignment = Enum.TextXAlignment.Center
+		-- Place directly under the nickname with a small vertical gap
+		userLabel.Position = UDim2.new(0, 0, 0.6, 3)
+
+		espLabels[player] = billboard
+	end
+
+	local function removeESP(player)
+		if espLabels[player] then
+			espLabels[player]:Destroy()
+			espLabels[player] = nil
+		end
+	end
+
+	local function refreshESP()
+		if not espEnabled then
+			for _, g in pairs(espLabels) do 
+				if g then g:Destroy() end 
+			end
+			espLabels = {}
+			return
+		end
+		local nickColor = nicknameSliders.getColor()
+		local userColor = usernameSliders.getColor()
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= localPlayer then
+				-- Pastikan label ada lalu update setiap refresh
+				if not espLabels[plr] then
+					createESP(plr)
+				end
+				local gui = espLabels[plr]
+				if gui then
+					local target = getAdorneeForPlayer(plr)
+					if gui.Adornee ~= target then gui.Adornee = target end
+					local n = gui:FindFirstChild("NameLabel")
+					local u = gui:FindFirstChild("UsernameLabel")
+					if n then
+						n.TextColor3 = nickColor
+						n.Text = plr.DisplayName
+					end
+					if u then
+						u.TextColor3 = userColor
+						u.Visible = not hideUsername
+						u.Text = "@" .. addThinSpacing(plr.Name)
+						u.TextXAlignment = Enum.TextXAlignment.Center
+						u.Position = UDim2.new(0, 0, 0.6, 3)
+					end
+				end
+			else
+				-- Jangan tampilkan label untuk local player; bersihkan jika pernah dibuat
+				if espLabels[plr] then
+					removeESP(plr)
+				end
+			end
+		end
+	end
+
+	Players.PlayerAdded:Connect(function(plr)
+		plr.CharacterAdded:Connect(function()
+			task.wait(0.25)
+			if espEnabled then
+				createESP(plr)
+			end
+		end)
+	end)
+
+	-- Connect to existing players
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= localPlayer then
+			plr.CharacterAdded:Connect(function()
+				-- Retarget Adornee saat respawn; tunda sedikit untuk load
+				task.wait(0.25)
+				if not espLabels[plr] then
+					createESP(plr)
+				else
+					local gui = espLabels[plr]
+					if gui then gui.Adornee = getAdorneeForPlayer(plr) end
+				end
+			end)
+			-- Pastikan label dibuat untuk pemain yang sudah ada
+			if not espLabels[plr] then createESP(plr) end
+		end
+	end
+
+	-- Handle godmode and no fall damage when local player respawns
+	localPlayer.CharacterAdded:Connect(function(character)
+		task.wait(0.5) -- Wait for character to fully load
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			-- Apply godmode if enabled
+			if godmodeEnabled then
+				humanoid.MaxHealth = math.huge
+				humanoid.Health = math.huge
+				-- Remove damage connections including fall damage (no PlatformStand)
+				task.wait(0.1)
+				pcall(function()
+					for _, connection in pairs(getconnections(humanoid.HealthChanged)) do
+						connection:Disable()
+					end
+					for _, connection in pairs(getconnections(humanoid.Died)) do
+						connection:Disable()
+					end
+					for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+						connection:Disable()
+					end
+					for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+						connection:Disable()
+					end
+				end)
+			end
+			
+			-- Apply no fall damage if enabled
+			if noFallDamageEnabled then
+				-- Remove fall damage connections without using PlatformStand
+				task.wait(0.1)
+				pcall(function()
+					for _, connection in pairs(getconnections(humanoid.FallingDown)) do
+						connection:Disable()
+					end
+					for _, connection in pairs(getconnections(humanoid.FreeFalling)) do
+						connection:Disable()
+					end
+				end)
+			end
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(plr)
+		removeESP(plr)
+	end)
+
+	-- SEARCH PLAYER + DROPDOWN (Players tab)
+	local searchY = 8
+	local searchBox = Instance.new("TextBox", PlayersPage)
+	searchBox.Size = UDim2.new(1, 0, 0, 36)
+	searchBox.Position = UDim2.new(0, 0, 0, searchY)
+	searchBox.PlaceholderText = "🔎  Search player..."
+	searchBox.Font = Theme.Fonts.Body
+	searchBox.TextSize = 17
+	searchBox.TextColor3 = Theme.Colors.Text
+	searchBox.BackgroundColor3 = Theme.Colors.InputBg
+	searchBox.ClearTextOnFocus = false
+	searchBox.PlaceholderColor3 = Theme.Colors.MutedText
+	searchBox.ZIndex = 40
+	createRound(searchBox, Theme.Radius)
+	createStroke(searchBox, Theme.Colors.Border, 1)
+
+	-- Predeclare action buttons so reflow captures locals (not globals)
+	local teleportBtn, spyBtn, followBtn
+
+	local dropdown = Instance.new("Frame", PlayersPage)
+	dropdown.Size = UDim2.new(1, 0, 0, 0)
+	-- Align with search box (12px side margin)
+	dropdown.Position = UDim2.new(0, 0, 0, searchY + 40)
+	dropdown.BackgroundTransparency = 0
+	dropdown.BackgroundColor3 = Theme.Colors.InputBg
+	dropdown.BorderSizePixel = 0
+	dropdown.ClipsDescendants = true
+	dropdown.ZIndex = 100
+	dropdown.Visible = false
+	createRound(dropdown, Theme.Radius)
+	createStroke(dropdown, Theme.Colors.Border, 1)
+	local dropdownPad = Instance.new("UIPadding", dropdown)
+	dropdownPad.PaddingTop = UDim.new(0, 6)
+	dropdownPad.PaddingBottom = UDim.new(0, 6)
+	dropdownPad.PaddingLeft = UDim.new(0, 8)
+	dropdownPad.PaddingRight = UDim.new(0, 8)
+
+	-- UIListLayout akan dibuat ulang setiap clearSuggestions
+
+	local currentSuggestions = {}
+	local currentSuggestionPlayers = {}
+	local pendingSelect = false
+	local suppressUntilNextFocus = false
+	local debounceToken = 0
+	-- (clearSuggestions defined below after reflowPlayersUI)
+
+	local selectedLabel = Instance.new("TextLabel", PlayersPage)
+	selectedLabel.Size = UDim2.new(1, 0, 0, 36)
+	selectedLabel.Position = UDim2.new(0, 12, 0, searchY + 40 + 8)
+	selectedLabel.BackgroundTransparency = 0.12
+	selectedLabel.BackgroundColor3 = Theme.Colors.Button:Lerp(Theme.Colors.Surface, 0.2)
+	selectedLabel.Font = Theme.Fonts.Title
+	selectedLabel.TextSize = 17
+	selectedLabel.TextColor3 = Theme.Colors.Accent
+	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	selectedLabel.Text = "    👤  <b>Selected:</b> <font color=\"#ffffff\">None</font>"
+	selectedLabel.RichText = true
+	selectedLabel.ZIndex = 10
+	createRound(selectedLabel, Theme.Radius)
+	createStroke(selectedLabel, Theme.Colors.Border, 1)
+
+	local selectedPlayer = nil
+	local spying = false
+	local following = false
+	local followConnection = nil
+	local bodyVelocity = nil
+	local bodyPosition = nil
+	local followBG = nil -- BodyGyro for yaw-only facing during follow
+
+	-- Fully stop follow and restore default walking behavior
+	local function stopFollowing()
+		following = false
+		if followBtn and followBtn.Parent then
+			followBtn.Text = "Follow: OFF"
+			setToggleVisual(followBtn, false)
+		end
+		-- Destroy follow forces
+		if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+		if bodyPosition then bodyPosition:Destroy() bodyPosition = nil end
+		if followBG then followBG:Destroy() followBG = nil end
+		-- Disconnect loop
+		if followConnection then
+			followConnection:Disconnect()
+			followConnection = nil
+		end
+		-- Reset character to default walking
+		local char = localPlayer.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum then
+				hum.AutoRotate = true
+				hum.PlatformStand = false
+			end
+			if hrp then
+				-- Zero out velocities to remove residual motion/torque
+				pcall(function()
+					hrp.AssemblyLinearVelocity = Vector3.new()
+					hrp.AssemblyAngularVelocity = Vector3.new()
+					hrp.RotVelocity = Vector3.new()
+				end)
+			end
+		end
+	end
+
+	-- Layout helpers for dropdown and action buttons
+	local SUGGESTION_ITEM_HEIGHT = 44
+	local SUGGESTION_MAX = 3
+
+	local function reflowPlayersUI()
+		local h = (dropdown and dropdown.Size and dropdown.Size.Y and dropdown.Size.Y.Offset) or 0
+		selectedLabel.Position = UDim2.new(0, 0, 0, toNum(searchY,0) + 40 + toNum(h,0) + 8)
+		local selY = (selectedLabel and selectedLabel.Position and selectedLabel.Position.Y and selectedLabel.Position.Y.Offset) or 0
+		local selH = (selectedLabel and selectedLabel.Size and selectedLabel.Size.Y and selectedLabel.Size.Y.Offset) or 36
+		local btnY = toNum(selY,0) + toNum(selH,36) + 12
+		if teleportBtn then teleportBtn.Position = UDim2.new(0, 0, 0, btnY) end
+		if spyBtn then spyBtn.Position = UDim2.new(0.34, 2, 0, btnY) end
+		if followBtn then followBtn.Position = UDim2.new(0.68, 4, 0, btnY) end
+	end
+
+	local function clearSuggestions()
+		for _, c in ipairs(dropdown:GetChildren()) do
+			if c:IsA("TextButton") or c:IsA("UIListLayout") then c:Destroy() end
+		end
+		currentSuggestions = {}
+		currentSuggestionPlayers = {}
+		dropdown.Size = UDim2.new(1, 0, 0, 0)
+		dropdown.Visible = false
+		local newLayout = Instance.new("UIListLayout", dropdown)
+		newLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		newLayout.Padding = UDim.new(0, 6)
+		newLayout.FillDirection = Enum.FillDirection.Vertical
+		-- Horizontal/Vertical alignment defaults are fine for full-width items
+		reflowPlayersUI()
+	end
+
+	local function setSelected(plr)
+		selectedPlayer = plr
+		if plr then
+			selectedLabel.Text = string.format("    👤  <b>Selected:</b> <font color=\"#00aaff\">%s</font> <font color=\"#aaaaaa\">(@%s)</font>", plr.DisplayName, plr.Name)
+			if spying and plr.Character and plr.Character:FindFirstChild("Humanoid") then
+				camera.CameraSubject = plr.Character.Humanoid
+			end
+		else
+			selectedLabel.Text = "  👤  <b>Selected:</b> <font color=\"#ffffff\">None</font>"
+		end
+	end
+
+
+	local function makeSuggestionButton(player)
+		local btn = Instance.new("TextButton", dropdown)
+		btn.Size = UDim2.new(1, 0, 0, SUGGESTION_ITEM_HEIGHT) -- vertical item
+		btn.BackgroundColor3 = Theme.Colors.Button
+		btn.BorderSizePixel = 0
+		btn.Font = Theme.Fonts.Body
+		btn.TextSize = 15
+		btn.TextColor3 = Theme.Colors.Text
+		btn.Text = string.format("<font color=\"#00aaff\">👤</font> <b>%s</b>\n<font color=\"#aaaaaa\">@%s</font>", player.DisplayName, player.Name)
+		btn.RichText = true
+		btn.AutoButtonColor = false
+		btn.ZIndex = 101
+		btn.TextYAlignment = Enum.TextYAlignment.Center
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		local textPadding = Instance.new("UIPadding", btn)
+		textPadding.PaddingLeft = UDim.new(0, 8)
+		textPadding.PaddingRight = UDim.new(0, 8)
+		textPadding.PaddingTop = UDim.new(0, 6)
+		textPadding.PaddingBottom = UDim.new(0, 6)
+		createRound(btn, Theme.Radius)
+		createStroke(btn, Theme.Colors.Border, 1)
+		local pad = Instance.new("UIPadding", btn)
+		pad.PaddingLeft = UDim.new(0, 10)
+		pad.PaddingRight = UDim.new(0, 10)
+		btn.MouseEnter:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.ToggleOn }):Play()
+			btn.TextColor3 = Theme.Colors.Glass
+		end)
+		btn.MouseLeave:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.13), { BackgroundColor3 = Theme.Colors.Button }):Play()
+			btn.TextColor3 = Theme.Colors.Text
+		end)
+		btn.MouseButton1Down:Connect(function()
+			pendingSelect = true
+		end)
+		btn.MouseButton1Click:Connect(function()
+			-- prevent reopening suggestions right after selection
+			debounceToken = debounceToken + 1
+			suppressUntilNextFocus = true
+			setSelected(player)
+			dropdown.Visible = false
+			clearSuggestions()
+			if searchBox then
+				searchBox:ReleaseFocus()
+				searchBox.Text = ""
+			end
+			task.defer(function()
+				pendingSelect = false
+			end)
+		end)
+		return btn
+	end
+
+	local function updateSuggestions()
+		-- Do not update if a click is in progress, suppressed, or not focused
+		if pendingSelect then return end
+		if suppressUntilNextFocus then return end
+		if not (searchBox and searchBox:IsFocused()) then return end
+		-- Debounce updates to avoid flicker (e.g., focus/blur race)
+		debounceToken = debounceToken + 1
+		local token = debounceToken
+		task.delay(0.06, function()
+			if token ~= debounceToken then return end
+			if suppressUntilNextFocus then return end
+		-- proceed below in safe zone
+		if pendingSelect or suppressUntilNextFocus then return end
+			clearSuggestions()
+		local q = (searchBox.Text or ""):lower():gsub("^%s+",""):gsub("%s+$","")
+			local scored = {}
+			for _, plr in pairs(Players:GetPlayers()) do
+				local d, n = plr.DisplayName, plr.Name
+				if q == "" then
+					table.insert(scored, {player=plr, score=0, d=d, n=n})
+				else
+					local dScore = d:lower():find(q, 1, true) and 2 or 0
+					local nScore = n:lower():find(q, 1, true) and 1 or 0
+					local bestScore = math.max(dScore, nScore)
+					if bestScore > 0 then
+						table.insert(scored, {player=plr, score=bestScore, d=d, n=n})
+					end
+				end
+			end
+			table.sort(scored, function(a, b)
+				if a.score ~= b.score then return a.score > b.score end
+				return a.d < b.d
+			end)
+			local count = math.min(SUGGESTION_MAX, #scored)
+			if count == 0 then return end
+			for i = 1, count do
+				local plr = scored[i].player
+				local btn = makeSuggestionButton(plr)
+				btn.LayoutOrder = i
+				table.insert(currentSuggestions, btn)
+				table.insert(currentSuggestionPlayers, plr)
+			end
+		local itemH = toNum(SUGGESTION_ITEM_HEIGHT, 44)
+		local pt = 0
+		local pb = 0
+		if dropdownPad and dropdownPad.PaddingTop then pt = toNum(dropdownPad.PaddingTop.Offset, 0) end
+		if dropdownPad and dropdownPad.PaddingBottom then pb = toNum(dropdownPad.PaddingBottom.Offset, 0) end
+		local countNum = toNum(count, 0)
+		local gaps = math.max(0, countNum - 1)
+		local height = (countNum * itemH) + (gaps * 6) + pt + pb
+		dropdown.Size = UDim2.new(1, 0, 0, toNum(height, 0))
+		dropdown.Visible = true
+		if typeof(reflowPlayersUI) == "function" then reflowPlayersUI() end
+		end)
+	end
+
+	searchBox:GetPropertyChangedSignal("Text"):Connect(updateSuggestions)
+	Players.PlayerAdded:Connect(updateSuggestions)
+
+	-- Open/close behavior for dropdown based on focus
+	searchBox.Focused:Connect(function()
+		suppressUntilNextFocus = false
+		updateSuggestions()
+	end)
+	searchBox.FocusLost:Connect(function(enterPressed)
+		-- If Enter pressed, select the first suggestion
+		if enterPressed and #currentSuggestionPlayers > 0 then
+			debounceToken = debounceToken + 1
+			suppressUntilNextFocus = true
+			setSelected(currentSuggestionPlayers[1])
+			dropdown.Visible = false
+			clearSuggestions()
+			if searchBox then
+				searchBox:ReleaseFocus()
+				searchBox.Text = ""
+			end
+			return
+		end
+		-- Otherwise, allow suggestion click to run first
+		task.delay(0.15, function()
+			if not pendingSelect then
+				clearSuggestions()
+			end
+		end)
+	end)
+
+	-- (removed duplicate predeclare to avoid shadowing)
+
+	Players.PlayerRemoving:Connect(function()
+		if selectedPlayer and not Players:FindFirstChild(selectedPlayer.Name) then
+			selectedPlayer = nil
+			selectedLabel.Text = "Selected: None"
+			if spying then
+				spying = false
+				if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" end
+				if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+					camera.CameraSubject = localPlayer.Character.Humanoid
+				end
+			end
+			if following then
+				following = false
+				if followBtn and followBtn.Parent then followBtn.Text = "Follow: OFF" end
+				-- Clean up fly components
+				if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+				if bodyPosition then bodyPosition:Destroy() bodyPosition = nil end
+				if followConnection then
+					followConnection:Disconnect()
+					followConnection = nil
+				end
+			end
+		end
+		updateSuggestions()
+	end)
+
+	-- Teleport, Spy, and Follow buttons (Players tab)
+
+	local btnY = selectedLabel.Position.Y.Offset + selectedLabel.Size.Y.Offset + 12
+	teleportBtn = Instance.new("TextButton", PlayersPage)
+	teleportBtn.Size = UDim2.new(0.32, -4, 0, 36)
+	teleportBtn.Position = UDim2.new(0, 0, 0, btnY)
+	teleportBtn.BackgroundColor3 = Theme.Colors.Surface
+	teleportBtn.Font = Theme.Fonts.Body
+	teleportBtn.TextSize = 14
+	teleportBtn.TextColor3 = Theme.Colors.Text
+	teleportBtn.Text = "Teleport"
+	styleButton(teleportBtn)
+	teleportBtn.ZIndex = 10
+
+	spyBtn = Instance.new("TextButton", PlayersPage)
+	spyBtn.Size = UDim2.new(0.32, -4, 0, 36)
+	spyBtn.Position = UDim2.new(0.34, 2, 0, btnY)
+	spyBtn.BackgroundColor3 = Theme.Colors.Surface
+	spyBtn.Font = Theme.Fonts.Body
+	spyBtn.TextSize = 14
+	spyBtn.TextColor3 = Theme.Colors.Text
+	spyBtn.Text = "Spy: OFF"
+	styleButton(spyBtn)
+	spyBtn.ZIndex = 10
+
+	followBtn = Instance.new("TextButton", PlayersPage) -- assign to predeclared upvalue
+	followBtn.Size = UDim2.new(0.32, -4, 0, 36)
+	followBtn.Position = UDim2.new(0.68, 4, 0, btnY)
+	followBtn.BackgroundColor3 = Theme.Colors.Surface
+	followBtn.Font = Theme.Fonts.Body
+	followBtn.TextSize = 14
+	followBtn.TextColor3 = Theme.Colors.Text
+	followBtn.Text = "Follow: OFF"
+	styleButton(followBtn)
+	followBtn.ZIndex = 10
+
+	teleportBtn.MouseButton1Click:Connect(function()
+		if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+			if myHRP then
+				myHRP.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
+			end
+		end
+	end)
+
+	spyBtn.MouseButton1Click:Connect(function()
+		if not selectedPlayer then return end
+		if not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid")) then return end
+		spying = not spying
+		if spying then
+			spyBtn.Text = "Spy: ON"
+			camera.CameraSubject = selectedPlayer.Character.Humanoid
+		else
+			spyBtn.Text = "Spy: OFF"
+			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+				camera.CameraSubject = localPlayer.Character.Humanoid
+			end
+		end
+		setToggleVisual(spyBtn, spying)
+	end)
+
+	followBtn.MouseButton1Click:Connect(function()
+		if not selectedPlayer then return end
+		if not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart")) then return end
+		
+		following = not following
+		if following then
+			followBtn.Text = "Follow: ON"
+			-- Disconnect previous connection if exists
+			if followConnection then
+				followConnection:Disconnect()
+			end
+		setToggleVisual(followBtn, true)
+
+			-- Stop fly to avoid conflicting forces
+			if flyActive and stopFly then
+				stopFly()
+			end
+			
+			-- Setup follow system (non-invasive; keeps emotes usable)
+			local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+			local myHumanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if myHRP and myHumanoid then
+				-- Create/refresh BodyVelocity for smooth movement (high force to overcome physics)
+				if bodyVelocity and bodyVelocity.Parent ~= myHRP then
+					bodyVelocity:Destroy()
+					bodyVelocity = nil
+				end
+				if not bodyVelocity then
+					bodyVelocity = Instance.new("BodyVelocity")
+					bodyVelocity.Name = "_FollowBV"
+					bodyVelocity.Parent = myHRP
+				end
+				bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+				pcall(function() bodyVelocity.P = 1e4 end) -- be snappy but stable
+				bodyVelocity.Velocity = Vector3.new()
+
+				-- Create/refresh BodyGyro for yaw-only facing
+				if followBG and followBG.Parent ~= myHRP then
+					followBG:Destroy()
+					followBG = nil
+				end
+				if not followBG then
+					followBG = Instance.new("BodyGyro")
+					followBG.Name = "_FollowBG"
+					followBG.Parent = myHRP
+				end
+				followBG.MaxTorque = Vector3.new(0, 1e9, 0) -- yaw only
+				followBG.P = 2e4
+				followBG.D = 900
+			end
+			
+			-- Start following with fly-like movement
+			followConnection = RunService.Heartbeat:Connect(function()
+				if not selectedPlayer or not selectedPlayer.Parent or not selectedPlayer.Character then
+					stopFollowing()
+					return
+				end
+				
+				local targetHRP = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+				local targetHumanoid = selectedPlayer.Character:FindFirstChildOfClass("Humanoid")
+				local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+				
+				-- Stop following if target is dead
+				if not targetHumanoid or targetHumanoid.Health <= 0 then
+					stopFollowing()
+					return
+				end
+				
+				if targetHRP and myHRP and bodyVelocity then
+					-- Calculate follow position: closer behind, slightly higher
+					local targetCFrame = targetHRP.CFrame
+					local behindOffset = targetCFrame.LookVector * -2.6 -- keep it not too far
+					local followPos = targetCFrame.Position + behindOffset + Vector3.new(0, 3.2, 0) -- a bit higher
+					-- Move toward target using velocity
+					local diff = followPos - myHRP.Position
+					local distance = diff.Magnitude
+					if distance > 0.25 then
+						local speed = math.min(distance * 6, 70) -- a bit lower cap to reduce overshoot
+						bodyVelocity.Velocity = diff.Unit * speed
+					else
+						bodyVelocity.Velocity = Vector3.new()
+					end
+					-- Apply yaw facing via BodyGyro to avoid CFrame snapping
+					if followBG then
+						local toTarget = targetHRP.Position - myHRP.Position
+						local flat = Vector3.new(toTarget.X, 0, toTarget.Z)
+						if flat.Magnitude > 1e-3 then
+							followBG.CFrame = CFrame.new(myHRP.Position, myHRP.Position + flat.Unit)
+						end
+					end
+				end
+			end)
+		else
+			stopFollowing()
+		end
+	end)
+
+	-- EMOTE FULL Toggle (Extras tab)
+	local emoteY = 8
+	local emoteToggleBtn = Instance.new("TextButton", ExtrasPage)
+	emoteToggleBtn.Size = UDim2.new(1, 0, 0, 38)
+	emoteToggleBtn.Position = UDim2.new(0, 0, 0, emoteY)
+	emoteToggleBtn.BackgroundColor3 = Theme.Colors.Surface
+	emoteToggleBtn.Font = Theme.Fonts.Body
+	emoteToggleBtn.TextSize = 16
+	emoteToggleBtn.TextColor3 = Theme.Colors.Text
+	emoteToggleBtn.Text = "EMOTE FULL: OFF"
+	styleButton(emoteToggleBtn)
+	emoteToggleBtn.ZIndex = 10
+
+	local emoteActive = false
+	local emoteAnimations = {}
+
+	emoteToggleBtn.MouseButton1Click:Connect(function()
+		emoteActive = not emoteActive
+		if emoteActive then
+			emoteToggleBtn.Text = "EMOTE FULL: ON"
+			pcall(function()
+				emoteAnimations = loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))() or {}
+			end)
+		else
+			emoteToggleBtn.Text = "EMOTE FULL: OFF"
+			if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+				for _, anim in pairs(emoteAnimations) do
+					if type(anim) == "table" and anim.Stop then
+						pcall(function() anim:Stop() end)
+					elseif typeof(anim) == "Instance" and anim:IsA("AnimationTrack") then
+						pcall(function() anim:Stop() end)
+					end
+				end
+				emoteAnimations = {}
+			end
+		end
+	end)
+
+	-- CP Creator Toggle (posisi setelah emoteToggleBtn)
+	local cpCreatorY = emoteY + 38 + 10
+	local cpCreatorBtn = Instance.new("TextButton", ExtrasPage)
+	cpCreatorBtn.Size = UDim2.new(1, 0, 0, 38)
+	cpCreatorBtn.Position = UDim2.new(0, 0, 0, cpCreatorY)
+	cpCreatorBtn.BackgroundColor3 = Theme.Colors.Surface
+	cpCreatorBtn.Font = Theme.Fonts.Body
+	cpCreatorBtn.TextSize = 16
+	cpCreatorBtn.TextColor3 = Theme.Colors.Text
+	cpCreatorBtn.Text = "CP Creator: OFF"
+	styleButton(cpCreatorBtn)
+	cpCreatorBtn.ZIndex = 10
+
+	local cpCreatorActive = false
+	cpCreatorBtn.MouseButton1Click:Connect(function()
+		cpCreatorActive = not cpCreatorActive
+		if cpCreatorActive then
+			cpCreatorBtn.Text = "CP Creator: ON"
+			pcall(function()
+				loadstring(game:HttpGet("https://raw.githubusercontent.com/ART1Le/createcpmanual/refs/heads/main/config.lua"))()
+			end)
+		else
+			cpCreatorBtn.Text = "CP Creator: OFF"
+		end
+		setToggleVisual(cpCreatorBtn, cpCreatorActive)
+	end)
+
+	-- Fly Mode toggle (shows the FlyPanel; actual flight controlled inside panel)
+	local flyModeEnabled = false
+	local flyModeBtn = Instance.new("TextButton", ExtrasPage)
+	flyModeBtn.Size = UDim2.new(1, 0, 0, 38)
+	flyModeBtn.Position = UDim2.new(0, 0, 0, cpCreatorY + 38 + 10)
+	flyModeBtn.BackgroundColor3 = Theme.Colors.Surface
+	flyModeBtn.Font = Theme.Fonts.Body
+	flyModeBtn.TextSize = 16
+	flyModeBtn.TextColor3 = Theme.Colors.Text
+	flyModeBtn.Text = "Fly Mode: OFF"
+	styleButton(flyModeBtn)
+	flyModeBtn.ZIndex = 10
+
+	-- (forward declarations defined at top of file)
+
+	flyModeBtn.MouseButton1Click:Connect(function()
+		flyModeEnabled = not flyModeEnabled
+		flyModeBtn.Text = flyModeEnabled and "Fly Mode: ON" or "Fly Mode: OFF"
+		setToggleVisual(flyModeBtn, flyModeEnabled)
+		if flyModeEnabled then
+			showFlyPanel()
+		else
+			hideFlyPanel()
+		end
+		-- Do NOT auto-start flight; panel opens only. Stop flight if disabling.
+		if not flyModeEnabled and flyActive and stopFly then
+			stopFly()
+		end
+	end)
+
+	-- Anti-AFK (optional, safe): toggled in Extras
+	local antiAFKEnabled = false
+	local antiAFKBtn = Instance.new("TextButton", ExtrasPage)
+	antiAFKBtn.Size = UDim2.new(1, 0, 0, 38)
+	antiAFKBtn.Position = UDim2.new(0, 0, 0, cpCreatorY + (38 + 10) * 2)
+	antiAFKBtn.BackgroundColor3 = Theme.Colors.Surface
+	antiAFKBtn.Font = Theme.Fonts.Body
+	antiAFKBtn.TextSize = 16
+	antiAFKBtn.TextColor3 = Theme.Colors.Text
+	antiAFKBtn.Text = "Anti AFK: OFF"
+	styleButton(antiAFKBtn)
+	antiAFKBtn.ZIndex = 10
+
+	local antiAFKConn = nil
+	antiAFKBtn.MouseButton1Click:Connect(function()
+		antiAFKEnabled = not antiAFKEnabled
+		antiAFKBtn.Text = antiAFKEnabled and "Anti AFK: ON" or "Anti AFK: OFF"
+		setToggleVisual(antiAFKBtn, antiAFKEnabled)
+		if antiAFKEnabled then
+			if antiAFKConn then antiAFKConn:Disconnect() antiAFKConn = nil end
+			antiAFKConn = localPlayer.Idled:Connect(function()
+				pcall(function()
+					VirtualUser:CaptureController()
+					VirtualUser:ClickButton2(Vector2.new(0,0), camera.CFrame)
+				end)
+			end)
+		else
+			if antiAFKConn then antiAFKConn:Disconnect() antiAFKConn = nil end
+		end
+	end)
+
+	-- Freecam (toggle with LeftCtrl + P)
+	local freecamActive = false
+	local freecamCFrame = nil
+	local freecamSpeedDefault = 60 -- studs/sec
+	local freecamSpeedCurrent = 60
+	local freecamSprintMult = 1.8
+	local freecamYaw = 0
+	local freecamPitch = 0
+	local prevCamType, prevCamSubject, prevMouseBehavior, prevMouseIconEnabled
+	local prevWalkSpeed, prevJumpPower, prevJumpHeight, prevUseJumpPower, prevAutoRotate
+
+	local FREECAM_BLOCK_ACTION = "__FreecamBlockMove__"
+	local FLY_BLOCK_ACTION = "__FlyBlockMove__"
+
+	-- Freecam GUI hiding state
+	local hiddenLayerCollectors = {} -- [Instance] = previousEnabled
+	local coreGuiPrevStates = {} -- [Enum.CoreGuiType] = bool
+	local guiHideConns = { pg = nil, ws = nil }
+
+	local function hideCollector(inst)
+		if not inst or hiddenLayerCollectors[inst] ~= nil then return end
+		local ok, prev = pcall(function() return inst.Enabled end)
+		if ok and prev ~= nil then
+			hiddenLayerCollectors[inst] = prev
+			pcall(function() inst.Enabled = false end)
+		end
+	end
+
+	local function hideAllGuisForFreecam()
+		-- Hide PlayerGui ScreenGuis (and any LayerCollector descendants)
+		local pg = localPlayer:FindFirstChild("PlayerGui")
+		if pg then
+			for _, d in ipairs(pg:GetDescendants()) do
+				if d:IsA("LayerCollector") then hideCollector(d) end
+			end
+			-- Also catch new ones while freecam is active
+			guiHideConns.pg = pg.DescendantAdded:Connect(function(d)
+				if d:IsA("LayerCollector") then hideCollector(d) end
+			end)
+		end
+		-- Hide world-attached GUIs
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then hideCollector(d) end
+		end
+		guiHideConns.ws = workspace.DescendantAdded:Connect(function(d)
+			if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then hideCollector(d) end
+		end)
+		-- Hide CoreGui elements and remember previous states
+		coreGuiPrevStates = {}
+		for _, coreType in ipairs(Enum.CoreGuiType:GetEnumItems()) do
+			-- Avoid using Enum.CoreGuiType.All to prevent ambiguous restore
+			if coreType ~= Enum.CoreGuiType.All then
+				local ok, prev = pcall(function() return StarterGui:GetCoreGuiEnabled(coreType) end)
+				if ok and typeof(prev) == "boolean" then coreGuiPrevStates[coreType] = prev end
+				pcall(function() StarterGui:SetCoreGuiEnabled(coreType, false) end)
+			end
+		end
+	end
+
+	local function restoreAllGuisAfterFreecam()
+		-- Disconnect listeners
+		if guiHideConns.pg then guiHideConns.pg:Disconnect() guiHideConns.pg = nil end
+		if guiHideConns.ws then guiHideConns.ws:Disconnect() guiHideConns.ws = nil end
+		-- Restore LayerCollector states
+		for inst, prev in pairs(hiddenLayerCollectors) do
+			if inst and inst.Parent then
+				pcall(function() inst.Enabled = prev end)
+			end
+			hiddenLayerCollectors[inst] = nil
+		end
+		-- Restore CoreGui states
+		for coreType, prev in pairs(coreGuiPrevStates) do
+			pcall(function() StarterGui:SetCoreGuiEnabled(coreType, prev) end)
+			coreGuiPrevStates[coreType] = nil
+		end
+		-- Fallback: if we somehow didn't capture Chat state, re-enable it to avoid locking the player out of chat
+		if coreGuiPrevStates[Enum.CoreGuiType.Chat] == nil then
+			pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true) end)
+		end
+	end
+
+	local function blockCharacterControls()
+		local char = localPlayer.Character
+		if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum then return end
+		prevWalkSpeed = hum.WalkSpeed
+		prevUseJumpPower = hum.UseJumpPower
+		prevJumpPower = hum.JumpPower
+		prevJumpHeight = hum.JumpHeight
+		prevAutoRotate = hum.AutoRotate
+		hum.WalkSpeed = 0
+		if hum.UseJumpPower then hum.JumpPower = 0 else hum.JumpHeight = 0 end
+		hum.AutoRotate = false
+		-- Sink common movement inputs so PlayerModule doesn't move the character
+		-- Use high priority to override default player controls
+		ContextActionService:BindActionAtPriority(FREECAM_BLOCK_ACTION, function()
+			return Enum.ContextActionResult.Sink
+		end, false, Enum.ContextActionPriority.High.Value,
+			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+			Enum.KeyCode.Space, Enum.KeyCode.LeftShift
+		)
+	end
+
+	local function restoreCharacterControls()
+		pcall(function()
+			ContextActionService:UnbindAction(FREECAM_BLOCK_ACTION)
+		end)
+		local char = localPlayer.Character
+		if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum then return end
+		if prevWalkSpeed ~= nil then hum.WalkSpeed = prevWalkSpeed end
+		if prevUseJumpPower ~= nil then hum.UseJumpPower = prevUseJumpPower end
+		if prevUseJumpPower then
+			if prevJumpPower ~= nil then hum.JumpPower = prevJumpPower end
+		else
+			if prevJumpHeight ~= nil then hum.JumpHeight = prevJumpHeight end
+		end
+		if prevAutoRotate ~= nil then hum.AutoRotate = prevAutoRotate end
+		prevWalkSpeed, prevJumpPower, prevJumpHeight, prevUseJumpPower, prevAutoRotate = nil, nil, nil, nil, nil
+	end
+
+	local function startFreecam()
+		if freecamActive then return end
+		freecamActive = true
+		prevCamType = camera.CameraType
+		prevCamSubject = camera.CameraSubject
+		prevMouseBehavior = UserInputService.MouseBehavior
+		prevMouseIconEnabled = UserInputService.MouseIconEnabled
+		camera.CameraType = Enum.CameraType.Scriptable
+		freecamCFrame = camera.CFrame
+		local rx, ry = freecamCFrame:ToOrientation()
+		freecamPitch = rx or 0
+		freecamYaw = (select(2, freecamCFrame:ToOrientation())) or 0
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+		UserInputService.MouseIconEnabled = false
+		freecamSpeedCurrent = freecamSpeedDefault -- reset speed on start
+		blockCharacterControls()
+		hideAllGuisForFreecam()
+	end
+
+	local function stopFreecam()
+		if not freecamActive then return end
+		freecamActive = false
+		camera.CameraType = prevCamType or Enum.CameraType.Custom
+		if spying and selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
+			camera.CameraSubject = selectedPlayer.Character.Humanoid
+		else
+			camera.CameraSubject = prevCamSubject or (localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid"))
+		end
+		UserInputService.MouseBehavior = prevMouseBehavior or Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = (prevMouseIconEnabled ~= false)
+		restoreCharacterControls()
+		restoreAllGuisAfterFreecam()
+		freecamSpeedCurrent = freecamSpeedDefault -- reset for next start
+	end
+
+	-- Fly mechanics
+	local flyActive = false
+	local flySpeed = 60
+	local flyBV, flyBG = nil, nil
+	local flyAntiGravVF, flyAttachment = nil, nil
+	local flyHipOffset = 2.0 -- extra hip height during fly to avoid ground contact
+	local flyRayParams = RaycastParams.new()
+	-- Save/restore humanoid state enables to keep posture rigid without blocking emotes
+	local prevFreefallEnabled, prevFallingEnabled
+	local prevRunningEnabled, prevRunningNoPhysEnabled
+	local prevHipHeight
+	local prevAnimateDisabled
+
+	local function updateFlySpeedLabel()
+		FlySpeedLabel.Text = string.format("Speed: %d", flySpeed)
+	end
+
+	local function cleanupFlyForces()
+		if flyBV then flyBV:Destroy() flyBV = nil end
+		if flyBG then flyBG:Destroy() flyBG = nil end
+		if flyAntiGravVF then flyAntiGravVF:Destroy() flyAntiGravVF = nil end
+		if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
+	end
+
+	local function ensureFlyForces()
+		local char = localPlayer.Character
+		if not char then return nil end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not (hrp and hum) then return nil end
+		if not flyBV then
+			flyBV = Instance.new("BodyVelocity")
+			flyBV.Name = "_FlyBV"
+			flyBV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+			flyBV.Velocity = Vector3.new()
+			flyBV.Parent = hrp
+		end
+		if not flyBG then
+			flyBG = Instance.new("BodyGyro")
+			flyBG.Name = "_FlyBG"
+			flyBG.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+			flyBG.P = 1e5
+			flyBG.D = 1000
+			flyBG.Parent = hrp
+		end
+		-- Anti-gravity to prevent falling posture while idle; keeps hover without PlatformStand
+		if not flyAttachment then
+			flyAttachment = Instance.new("Attachment")
+			flyAttachment.Name = "_FlyAttach"
+			flyAttachment.Parent = hrp
+		end
+		if not flyAntiGravVF then
+			flyAntiGravVF = Instance.new("VectorForce")
+			flyAntiGravVF.Name = "_FlyAntiGrav"
+			flyAntiGravVF.Attachment0 = flyAttachment
+			flyAntiGravVF.RelativeTo = Enum.ActuatorRelativeTo.World
+			flyAntiGravVF.Force = Vector3.new(0, hrp.AssemblyMass * workspace.Gravity, 0)
+			flyAntiGravVF.Parent = hrp
+		end
+		return hrp, hum
+	end
+
+	function startFly()
+		-- Stop follow to avoid conflicts
+		if following then
+			following = false
+			if followBtn and followBtn.Parent then followBtn.Text = "Follow: OFF" setToggleVisual(followBtn, false) end
+			if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+			if bodyPosition then bodyPosition:Destroy() bodyPosition = nil end
+			if followConnection then followConnection:Disconnect() followConnection = nil end
+		end
+		flyActive = true
+		if FlyStartBtn then setToggleVisual(FlyStartBtn, true) end
+		if FlyStopBtn then setToggleVisual(FlyStopBtn, false) end
+		local _hrp, _hum = ensureFlyForces()
+		-- Keep humanoid from auto-rotating to maintain upright/yaw control
+		local char = localPlayer.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.AutoRotate = false
+				-- Make stance rigid: disable falling states during flight (restored on stop)
+				prevFreefallEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.Freefall)
+				prevFallingEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.FallingDown)
+				prevRunningEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.Running)
+				prevRunningNoPhysEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics)
+				prevHipHeight = hum.HipHeight
+				hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+				hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+				hum:SetStateEnabled(Enum.HumanoidStateType.Running, false)
+				hum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, false)
+				-- Lift to avoid ground-run triggers; subtle to keep emotes natural
+				hum.HipHeight = math.max(prevHipHeight or hum.HipHeight, (hum.HipHeight or 2) + flyHipOffset)
+				-- Enter Flying state to avoid run/land transitions
+				hum:ChangeState(Enum.HumanoidStateType.Flying)
+				-- Stop any current tracks and disable default Animate script to keep pose rigid
+				local animator = hum:FindFirstChildOfClass("Animator")
+				if animator then
+					for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+						pcall(function() tr:Stop(0) end)
+					end
+				end
+				local animateScript = char:FindFirstChild("Animate")
+				if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
+					prevAnimateDisabled = animateScript.Disabled
+					animateScript.Disabled = true
+				end
+			end
+		end
+		-- Block default character movement so running animation doesn't play; we drive motion ourselves
+		ContextActionService:BindActionAtPriority(FLY_BLOCK_ACTION, function()
+			return Enum.ContextActionResult.Sink
+		end, false, Enum.ContextActionPriority.High.Value,
+			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+			Enum.KeyCode.Space, Enum.KeyCode.LeftShift
+		)
+	end
+
+	function stopFly()
+		flyActive = false
+		if FlyStartBtn then setToggleVisual(FlyStartBtn, false) end
+		if FlyStopBtn then setToggleVisual(FlyStopBtn, true) end
+		cleanupFlyForces()
+		local char = localPlayer.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum then
+				-- Restore basic flags first
+				hum.AutoRotate = true
+				hum.PlatformStand = false
+				hum.Sit = false
+				-- Restore falling/running state enables captured earlier
+				if prevFreefallEnabled ~= nil then
+					hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, prevFreefallEnabled)
+					prevFreefallEnabled = nil
+				end
+				if prevFallingEnabled ~= nil then
+					hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, prevFallingEnabled)
+					prevFallingEnabled = nil
+				end
+				if prevRunningEnabled ~= nil then
+					hum:SetStateEnabled(Enum.HumanoidStateType.Running, prevRunningEnabled)
+					prevRunningEnabled = nil
+				end
+				if prevRunningNoPhysEnabled ~= nil then
+					hum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, prevRunningNoPhysEnabled)
+					prevRunningNoPhysEnabled = nil
+				end
+				if prevHipHeight ~= nil then
+					hum.HipHeight = prevHipHeight
+					prevHipHeight = nil
+				end
+				-- Re-enable default Animate script (if it exists)
+				local animateScript = char:FindFirstChild("Animate")
+				if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
+					if prevAnimateDisabled ~= nil then
+						animateScript.Disabled = prevAnimateDisabled
+					else
+						animateScript.Disabled = false
+					end
+				end
+				prevAnimateDisabled = nil
+				-- Force a sane state transition so walking resumes
+				pcall(function()
+					if hum.Health > 0 then
+						-- Land then enter running; this clears lingering physics/falling
+						hum:ChangeState(Enum.HumanoidStateType.Landed)
+						hum:ChangeState(Enum.HumanoidStateType.Running)
+					end
+				end)
+			end
+			if hrp then
+				-- Ensure HRP is not anchored and zero out residual velocities
+				pcall(function()
+					hrp.Anchored = false
+					hrp.AssemblyLinearVelocity = Vector3.new()
+					hrp.AssemblyAngularVelocity = Vector3.new()
+					hrp.RotVelocity = Vector3.new()
+				end)
+				-- Remove any stray BodyMovers/VectorForces left by other features
+				for _, d in ipairs(hrp:GetChildren()) do
+					if d:IsA("BodyMover") or d:IsA("VectorForce") or d:IsA("LinearVelocity") or d:IsA("AngularVelocity") or d:IsA("BodyGyro") or d:IsA("BodyVelocity") then
+						pcall(function() d:Destroy() end)
+					end
+				end
+			end
+		end
+		pcall(function() ContextActionService:UnbindAction(FLY_BLOCK_ACTION) end)
+	end
+
+	FlyMinusBtn.MouseButton1Click:Connect(function()
+		flySpeed = math.max(10, flySpeed - 5)
+		updateFlySpeedLabel()
+	end)
+
+	FlyPlusBtn.MouseButton1Click:Connect(function()
+		flySpeed = math.min(300, flySpeed + 5)
+		updateFlySpeedLabel()
+	end)
+
+	FlyStartBtn.MouseButton1Click:Connect(function()
+		startFly()
+	end)
+
+	FlyStopBtn.MouseButton1Click:Connect(function()
+		stopFly()
+	end)
+
+	-- Maintain fly across respawn if active
+	localPlayer.CharacterAdded:Connect(function()
+		if flyActive then
+			task.wait(0.25)
+			ensureFlyForces()
+		end
+		-- Maintain or restore noclip state appropriately on respawn
+		if noclipEnabled then
+			task.wait(0.1)
+			pcall(applyNoclipToCharacter)
+		else
+			pcall(disableNoclipRestore)
+		end
+	end)
+
+	local function ensureSpyHealth()
+		if spying then
+			if not selectedPlayer or not selectedPlayer.Parent or not selectedPlayer.Character or not selectedPlayer.Character:FindFirstChild("Humanoid") then
+				spying = false
+				if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: OFF" setToggleVisual(spyBtn, false) end
+				if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+					camera.CameraSubject = localPlayer.Character.Humanoid
+				end
+			else
+				camera.CameraSubject = selectedPlayer.Character.Humanoid
+			end
+		end
+		
+		if following then
+			if not selectedPlayer or not selectedPlayer.Parent or not selectedPlayer.Character or not selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+				following = false
+				if followBtn and followBtn.Parent then followBtn.Text = "Follow: OFF" setToggleVisual(followBtn, false) end
+				if followConnection then
+					followConnection:Disconnect()
+					followConnection = nil
+				end
+			end
+		end
+	end
+
+	-- Toggle panel with key (N)
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.N then
+			ScreenGui.Enabled = not ScreenGui.Enabled -- FlyGui remains visible
+			if ScreenGui.Enabled then
+				updateSuggestions()
+			else
+				-- Clear dropdown and focus to prevent lingering visuals
+				if searchBox then searchBox:ReleaseFocus() searchBox.Text = "" end
+				if dropdown then dropdown.Visible = false end
+				if typeof(clearSuggestions) == "function" then clearSuggestions() end
+				pendingSelect = false
+			end
+			if not ScreenGui.Enabled and spying then
+				spying = true
+				if spyBtn and spyBtn.Parent then spyBtn.Text = "Spy: ON" setToggleVisual(spyBtn, true) end
+				if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+					camera.CameraSubject = localPlayer.Character.Humanoid
+				end
+			end
+		end
+
+		-- Emergency restore: F8 brings back UI and exits freecam
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.F8 then
+			if freecamActive then
+				pcall(stopFreecam)
+			end
+			-- Ensure our UIs are visible/enabled
+			pcall(function()
+				ScreenGui.Enabled = true
+				FlyGui.Enabled = true
+			end)
+			-- In case GUI hiding got stuck, force a restore
+			pcall(restoreAllGuisAfterFreecam)
+		end
+		-- Freecam toggle: LeftCtrl + P
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.P and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+			if freecamActive then
+				stopFreecam()
+			else
+				-- Turn off fly/follow to avoid confusion; spy view will be overridden by freecam
+				if flyActive and stopFly then stopFly() end
+				if following then
+					local ok = pcall(function() if stopFollowing then stopFollowing() end end)
+					if not ok then following = false end
+				end
+				startFreecam()
+			end
+		end
+
+		-- Freecam speed down: LeftCtrl + '-'
+		if freecamActive and input.KeyCode == Enum.KeyCode.Minus and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+			freecamSpeedCurrent = math.max(5, math.floor(freecamSpeedCurrent * 0.8))
+		end
+
+		-- Freecam speed up: LeftCtrl + '+' (Equals key, usually with Shift)
+		if freecamActive and input.KeyCode == Enum.KeyCode.Equals and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+			freecamSpeedCurrent = math.min(1000, math.ceil(freecamSpeedCurrent * 1.25))
+		end
+	end)
+
+	-- Main Loop
+	local lastESP = 0
+	local espIntervalFast = 0 -- every frame
+	local espIntervalSlow = 0.08 -- ~12.5 fps
+
+	RunService.RenderStepped:Connect(function(dt)
+		-- ESP refresh: realtime or throttled
+		lastESP = lastESP + (dt or 0)
+		local interval = espRealtime and espIntervalFast or espIntervalSlow
+		if lastESP >= interval then
+			lastESP = 0
+			refreshESP()
+		end
+
+		-- ESP distance-based tuning for readability
+		if espEnabled then
+			local cam = camera
+			if cam then
+				for plr, gui in pairs(espLabels) do
+					if typeof(gui) == "Instance" and gui:IsA("BillboardGui") and gui.Adornee then
+						local adorneePos = gui.Adornee.Position
+						local dist = (cam.CFrame.Position - adorneePos).Magnitude
+						local scale
+						-- Cap far scaling at 1.0 so labels stay small at distance
+						if dist <= 25 then
+							scale = 0.90
+						elseif dist <= 75 then
+							-- ease up slowly toward 1.0
+							scale = 0.94 + (dist - 25) * 0.0012 -- ~0.94 to ~1.0
+						else
+							scale = 0.8
+						end
+						local s = gui:FindFirstChild("_ESPUIScale")
+						if s and s:IsA("UIScale") then
+							s.Scale = scale
+						end
+						-- Slight stroke tweak to maintain clarity
+						local nameLabel = gui:FindFirstChild("NameLabel")
+						local userLabel = gui:FindFirstChild("UsernameLabel")
+						if nameLabel and nameLabel:IsA("TextLabel") then
+							nameLabel.TextStrokeTransparency = math.clamp(0.24 + (scale - 1) * 0.05, 0.24, 0.30)
+						end
+						if userLabel and userLabel:IsA("TextLabel") then
+							userLabel.TextStrokeTransparency = math.clamp(0.26 + (scale - 1) * 0.05, 0.26, 0.32)
+						end
+					end
+				end
+			end
+		end
+		if noNightEnabled then
+			Lighting.ClockTime = 14
+			Lighting.Brightness = 5
+			Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+			Lighting.Ambient = Color3.new(1, 1, 1)
+			Lighting.GlobalShadows = false
+			Lighting.FogStart = 0
+			Lighting.FogEnd = 1e6
+			Lighting.FogColor = Color3.new(1, 1, 1)
+			pcall(function() Lighting.ExposureCompensation = 0.3 end)
+		end
+		
+		-- Noclip: handled via enable/disable functions to avoid per-frame collision writes
+		
+		-- Godmode health protection (includes no fall damage without PlatformStand)
+		if godmodeEnabled then
+			local character = localPlayer.Character
+			if character then
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					-- Ensure health stays infinite
+					if humanoid.Health < math.huge then
+						humanoid.Health = math.huge
+					end
+					-- Additional fall damage protection by monitoring health changes
+					local currentHealth = humanoid.Health
+					if currentHealth < humanoid.MaxHealth and currentHealth > 0 then
+						task.spawn(function()
+							task.wait(0.1)
+							if humanoid.Health < humanoid.MaxHealth and humanoid.Health > 0 then
+								humanoid.Health = humanoid.MaxHealth
+							end
+						end)
+					end
+				end
+			end
+		end
+		
+		-- No Fall Damage protection (without affecting character posture)
+		if noFallDamageEnabled then
+			local character = localPlayer.Character
+			if character then
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					-- Maintain fall damage protection by monitoring health changes due to falling
+					local currentHealth = humanoid.Health
+					-- If health suddenly drops (likely from fall damage), restore it
+					if currentHealth < humanoid.MaxHealth and currentHealth > 0 then
+						task.spawn(function()
+							task.wait(0.1) -- Small delay to detect fall damage
+							if humanoid.Health < humanoid.MaxHealth and humanoid.Health > 0 then
+								humanoid.Health = humanoid.MaxHealth
+							end
+						end)
+					end
+				end
+			end
+		end
+		
+		ensureSpyHealth()
+
+		-- Fly update
+		if flyActive then
+			local hrp, hum = ensureFlyForces()
+			if hrp and hum then
+				-- Ensure Humanoid doesn't report movement so default running animation won't play
+				hum:Move(Vector3.new(), true)
+				-- Force rigid state (Physics) to prevent any animation state transitions
+				hum:ChangeState(Enum.HumanoidStateType.Physics)
+				-- Maintain elevated hip height gently
+				if prevHipHeight ~= nil then
+					local targetHip = math.max(prevHipHeight, (prevHipHeight or hum.HipHeight or 2) + flyHipOffset)
+					hum.HipHeight = targetHip
+				end
+				-- Keep anti-gravity in sync with mass/gravity
+				if flyAntiGravVF then
+					flyAntiGravVF.Force = Vector3.new(0, hrp.AssemblyMass * workspace.Gravity, 0)
+				end
+				-- Maintain minimum clearance above ground to avoid any landing/falling effects
+				local charRef = localPlayer and localPlayer.Character or nil
+				if charRef and hrp then
+					flyRayParams.FilterType = Enum.RaycastFilterType.Exclude
+					flyRayParams.FilterDescendantsInstances = {charRef}
+					local result = workspace:Raycast(hrp.Position, Vector3.new(0, -50, 0), flyRayParams)
+					if result then
+						local clearance = hrp.Position.Y - result.Position.Y
+						local desired = hum.HipHeight + 0.8
+						if clearance < desired then
+							local dy = desired - clearance
+							hrp.CFrame = hrp.CFrame + Vector3.new(0, dy, 0)
+							local v = hrp.AssemblyLinearVelocity
+							hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+						end
+					end
+				end
+				-- Gather inputs
+				local move = Vector3.new()
+				local isW = UserInputService:IsKeyDown(Enum.KeyCode.W)
+				local isS = UserInputService:IsKeyDown(Enum.KeyCode.S)
+				local isA = UserInputService:IsKeyDown(Enum.KeyCode.A)
+				local isD = UserInputService:IsKeyDown(Enum.KeyCode.D)
+				local isE = UserInputService:IsKeyDown(Enum.KeyCode.E)
+				local isQ = UserInputService:IsKeyDown(Enum.KeyCode.Q)
+
+				local camCF = camera.CFrame
+				local forward = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z)
+				local right = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
+				if forward.Magnitude > 0 then forward = forward.Unit end
+				if right.Magnitude > 0 then right = right.Unit end
+
+				if isW then move = move + forward end
+				if isS then move = move - forward end
+				if isA then move = move - right end
+				if isD then move = move + right end
+				if isE then move = move + Vector3.new(0, 1, 0) end
+				if isQ then move = move + Vector3.new(0, -1, 0) end
+
+				if move.Magnitude > 0 then
+					move = move.Unit * flySpeed
+				else
+					-- If no input, stay hovering (velocity zero; anti-gravity holds altitude)
+					move = Vector3.new()
+				end
+
+				-- Apply velocity
+				flyBV.Velocity = move
+
+				-- Keep upright strongly; face camera yaw (no pitch/roll)
+				local look = forward.Magnitude > 0 and forward or Vector3.new(0, 0, -1)
+				local yawFace = CFrame.new(hrp.Position, hrp.Position + Vector3.new(look.X, 0, look.Z))
+				flyBG.CFrame = yawFace
+				-- Zero out any angular velocity to prevent spin
+				hrp.RotVelocity = Vector3.new()
+				-- Correct pitch/roll drift explicitly if detected
+				local _, y, _ = hrp.CFrame:ToOrientation()
+				local corrected = CFrame.new(hrp.Position) * CFrame.Angles(0, y, 0)
+				if (hrp.CFrame.LookVector.Y ~= 0) or math.abs(hrp.CFrame.RightVector.Y) > 1e-3 then
+					hrp.CFrame = corrected
+				end
+			end
+		else
+			-- Ensure forces removed if not flying
+			if flyBV or flyBG then cleanupFlyForces() end
+		end
+
+		-- Freecam update
+		if freecamActive and freecamCFrame then
+			-- Make sure character stays still while in freecam
+			local ch = localPlayer.Character
+			local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+			if hum then hum:Move(Vector3.new(), true) end
+			-- Mouse look
+			local delta = UserInputService:GetMouseDelta()
+			local sensitivity = 0.0023
+			freecamYaw = freecamYaw - delta.X * sensitivity
+			freecamPitch = math.clamp(freecamPitch - delta.Y * sensitivity, -math.rad(85), math.rad(85))
+			local rot = CFrame.Angles(0, freecamYaw, 0) * CFrame.Angles(freecamPitch, 0, 0)
+			local move = Vector3.new()
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Vector3.new(0,0,-1) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move + Vector3.new(0,0,1) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move + Vector3.new(-1,0,0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Vector3.new(1,0,0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.E) then move = move + Vector3.new(0,1,0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move + Vector3.new(0,-1,0) end
+			local speed = freecamSpeedCurrent * (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and freecamSprintMult or 1)
+			if move.Magnitude > 0 then
+				move = (rot * CFrame.new(move)).Position -- rotate direction
+				move = move.Unit * speed * (dt or 0)
+				freecamCFrame = CFrame.new(freecamCFrame.Position + move) * rot
+			else
+				freecamCFrame = CFrame.new(freecamCFrame.Position) * rot
+			end
+			camera.CFrame = freecamCFrame
+		end
+	end)
+
+	-- Infinity Jump
+	local function onJumpRequest()
+		if infinityJumpEnabled then
+			local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+		end
+	end
+	UserInputService.JumpRequest:Connect(onJumpRequest)
+
+	-- Defer initial suggestion build to not block UI if something fails
+	task.defer(function()
+		pcall(updateSuggestions)
+		pcall(reflowPlayersUI)
+	end)
