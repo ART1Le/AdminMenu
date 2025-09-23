@@ -335,7 +335,7 @@
 	FlyTitle.TextSize = 15
 	FlyTitle.TextColor3 = Theme.Colors.Text
 	FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
-	FlyTitle.Text = "✈️  Fly Controls"
+	FlyTitle.Text = "✈️  Noclip Fly (E/Q)"
 
 	-- Close (X) button on top-right to disable and hide panel
 	local CloseFlyBtn = Instance.new("TextButton", FlyPanel)
@@ -2052,19 +2052,19 @@
 		freecamSpeedCurrent = freecamSpeedDefault -- reset for next start
 	end
 
-	-- Fly mechanics
+	-- Fly mechanics - Noclip Mode with straight body posture
+	-- This fly system allows clipping through any parts with straight body posture
+	-- Features:
+	-- - Can pass through any collision/parts (noclip flying)
+	-- - Straight forward body posture while flying
+	-- - Camera-relative movement in all directions
+	-- - Uses WASD for horizontal, E for up, Q for down
+	-- - Full 3D movement following camera direction
 	local flyActive = false
 	local flySpeed = 60
 	local flyBV, flyBG = nil, nil
-	local flyAntiGravVF, flyAttachment = nil, nil
-	local flyHipOffset = 2.0 -- extra hip height during fly to avoid ground contact
-	local flyRayParams = RaycastParams.new()
-	-- Save/restore humanoid state enables to keep posture rigid without blocking emotes
-	local prevFreefallEnabled, prevFallingEnabled
-	local prevRunningEnabled, prevRunningNoPhysEnabled
-	local prevHipHeight
-	local prevAnimateDisabled
-
+	local flyOriginalCollision = {} -- Store original collision states
+	
 	local function updateFlySpeedLabel()
 		FlySpeedLabel.Text = string.format("Speed: %d", flySpeed)
 	end
@@ -2072,8 +2072,6 @@
 	local function cleanupFlyForces()
 		if flyBV then flyBV:Destroy() flyBV = nil end
 		if flyBG then flyBG:Destroy() flyBG = nil end
-		if flyAntiGravVF then flyAntiGravVF:Destroy() flyAntiGravVF = nil end
-		if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
 	end
 
 	local function ensureFlyForces()
@@ -2082,35 +2080,26 @@
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if not (hrp and hum) then return nil end
+		
+		-- BodyVelocity for movement
 		if not flyBV then
 			flyBV = Instance.new("BodyVelocity")
 			flyBV.Name = "_FlyBV"
-			flyBV.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+			flyBV.MaxForce = Vector3.new(1e9, 1e9, 1e9) -- Maximum force for full control
 			flyBV.Velocity = Vector3.new()
 			flyBV.Parent = hrp
 		end
+		
+		-- BodyGyro for maintaining straight posture and camera direction
 		if not flyBG then
 			flyBG = Instance.new("BodyGyro")
 			flyBG.Name = "_FlyBG"
-			flyBG.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-			flyBG.P = 1e5
-			flyBG.D = 1000
+			flyBG.MaxTorque = Vector3.new(1e9, 1e9, 1e9) -- Full rotational control
+			flyBG.P = 3000 -- Power for rotation
+			flyBG.D = 500 -- Damping
 			flyBG.Parent = hrp
 		end
-		-- Anti-gravity to prevent falling posture while idle; keeps hover without PlatformStand
-		if not flyAttachment then
-			flyAttachment = Instance.new("Attachment")
-			flyAttachment.Name = "_FlyAttach"
-			flyAttachment.Parent = hrp
-		end
-		if not flyAntiGravVF then
-			flyAntiGravVF = Instance.new("VectorForce")
-			flyAntiGravVF.Name = "_FlyAntiGrav"
-			flyAntiGravVF.Attachment0 = flyAttachment
-			flyAntiGravVF.RelativeTo = Enum.ActuatorRelativeTo.World
-			flyAntiGravVF.Force = Vector3.new(0, hrp.AssemblyMass * workspace.Gravity, 0)
-			flyAntiGravVF.Parent = hrp
-		end
+		
 		return hrp, hum
 	end
 
@@ -2123,50 +2112,40 @@
 			if bodyPosition then bodyPosition:Destroy() bodyPosition = nil end
 			if followConnection then followConnection:Disconnect() followConnection = nil end
 		end
+		
 		flyActive = true
 		if FlyStartBtn then setToggleVisual(FlyStartBtn, true) end
 		if FlyStopBtn then setToggleVisual(FlyStopBtn, false) end
+		
 		local _hrp, _hum = ensureFlyForces()
-		-- Keep humanoid from auto-rotating to maintain upright/yaw control
+		
+		-- Configure humanoid for noclip flying with straight posture
 		local char = localPlayer.Character
 		if char then
 			local hum = char:FindFirstChildOfClass("Humanoid")
 			if hum then
-				hum.AutoRotate = false
-				-- Make stance rigid: disable falling states during flight (restored on stop)
-				prevFreefallEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.Freefall)
-				prevFallingEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.FallingDown)
-				prevRunningEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.Running)
-				prevRunningNoPhysEnabled = hum:GetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics)
-				prevHipHeight = hum.HipHeight
-				hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-				hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-				hum:SetStateEnabled(Enum.HumanoidStateType.Running, false)
-				hum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, false)
-				-- Lift to avoid ground-run triggers; subtle to keep emotes natural
-				hum.HipHeight = math.max(prevHipHeight or hum.HipHeight, (hum.HipHeight or 2) + flyHipOffset)
-				-- Enter Flying state to avoid run/land transitions
-				hum:ChangeState(Enum.HumanoidStateType.Flying)
-				-- Stop any current tracks and disable default Animate script to keep pose rigid
-				local animator = hum:FindFirstChildOfClass("Animator")
-				if animator then
-					for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
-						pcall(function() tr:Stop(0) end)
-					end
-				end
-				local animateScript = char:FindFirstChild("Animate")
-				if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
-					prevAnimateDisabled = animateScript.Disabled
-					animateScript.Disabled = true
+				-- Set to Physics state for straight body posture
+				hum:ChangeState(Enum.HumanoidStateType.Physics)
+				hum.PlatformStand = true -- Keep body straight and rigid
+				hum.AutoRotate = false -- Disable auto rotation
+			end
+			
+			-- Store original collision states and disable collision for noclip
+			flyOriginalCollision = {}
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					flyOriginalCollision[part] = part.CanCollide
+					part.CanCollide = false
 				end
 			end
 		end
-		-- Block default character movement so running animation doesn't play; we drive motion ourselves
+		
+		-- Block default character movement inputs during flight
 		ContextActionService:BindActionAtPriority(FLY_BLOCK_ACTION, function()
 			return Enum.ContextActionResult.Sink
 		end, false, Enum.ContextActionPriority.High.Value,
 			Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
-			Enum.KeyCode.Space, Enum.KeyCode.LeftShift
+			Enum.KeyCode.E, Enum.KeyCode.Q, Enum.KeyCode.Space, Enum.KeyCode.LeftShift
 		)
 	end
 
@@ -2174,72 +2153,43 @@
 		flyActive = false
 		if FlyStartBtn then setToggleVisual(FlyStartBtn, false) end
 		if FlyStopBtn then setToggleVisual(FlyStopBtn, true) end
+		
 		cleanupFlyForces()
+		
+		-- Restore character to normal walking state
 		local char = localPlayer.Character
 		if char then
 			local hum = char:FindFirstChildOfClass("Humanoid")
 			local hrp = char:FindFirstChild("HumanoidRootPart")
 			if hum then
-				-- Restore basic flags first
-				hum.AutoRotate = true
+				-- Restore normal humanoid states
 				hum.PlatformStand = false
+				hum.AutoRotate = true
 				hum.Sit = false
-				-- Restore falling/running state enables captured earlier
-				if prevFreefallEnabled ~= nil then
-					hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, prevFreefallEnabled)
-					prevFreefallEnabled = nil
-				end
-				if prevFallingEnabled ~= nil then
-					hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, prevFallingEnabled)
-					prevFallingEnabled = nil
-				end
-				if prevRunningEnabled ~= nil then
-					hum:SetStateEnabled(Enum.HumanoidStateType.Running, prevRunningEnabled)
-					prevRunningEnabled = nil
-				end
-				if prevRunningNoPhysEnabled ~= nil then
-					hum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, prevRunningNoPhysEnabled)
-					prevRunningNoPhysEnabled = nil
-				end
-				if prevHipHeight ~= nil then
-					hum.HipHeight = prevHipHeight
-					prevHipHeight = nil
-				end
-				-- Re-enable default Animate script (if it exists)
-				local animateScript = char:FindFirstChild("Animate")
-				if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
-					if prevAnimateDisabled ~= nil then
-						animateScript.Disabled = prevAnimateDisabled
-					else
-						animateScript.Disabled = false
-					end
-				end
-				prevAnimateDisabled = nil
-				-- Force a sane state transition so walking resumes
-				pcall(function()
-					if hum.Health > 0 then
-						-- Land then enter running; this clears lingering physics/falling
-						hum:ChangeState(Enum.HumanoidStateType.Landed)
-						hum:ChangeState(Enum.HumanoidStateType.Running)
-					end
-				end)
+				-- Return to running state for normal walking
+				hum:ChangeState(Enum.HumanoidStateType.Running)
 			end
+			
+			-- Restore original collision states
+			for part, originalState in pairs(flyOriginalCollision) do
+				if part and part.Parent then
+					pcall(function() part.CanCollide = originalState end)
+				end
+			end
+			flyOriginalCollision = {}
+			
 			if hrp then
-				-- Ensure HRP is not anchored and zero out residual velocities
+				-- Clear any residual velocities and rotation
 				pcall(function()
 					hrp.Anchored = false
 					hrp.AssemblyLinearVelocity = Vector3.new()
 					hrp.AssemblyAngularVelocity = Vector3.new()
 					hrp.RotVelocity = Vector3.new()
 				end)
-				-- Remove any stray BodyMovers/VectorForces left by other features
-				for _, d in ipairs(hrp:GetChildren()) do
-					if d:IsA("BodyMover") or d:IsA("VectorForce") or d:IsA("LinearVelocity") or d:IsA("AngularVelocity") or d:IsA("BodyGyro") or d:IsA("BodyVelocity") then
-						pcall(function() d:Destroy() end)
-					end
-				end
 			end
 		end
+		
+		-- Unbind movement controls
 		pcall(function() ContextActionService:UnbindAction(FLY_BLOCK_ACTION) end)
 	end
 
@@ -2261,7 +2211,7 @@
 		stopFly()
 	end)
 
-	-- Maintain fly across respawn if active
+	-- Maintain fly across respawn if active (simplified)
 	localPlayer.CharacterAdded:Connect(function()
 		if flyActive then
 			task.wait(0.25)
@@ -2472,87 +2422,53 @@
 		
 		ensureSpyHealth()
 
-		-- Fly update
+		-- Fly update - Noclip Mode with camera-relative movement
+		-- Controls: WASD = movement relative to camera, E = up, Q = down
+		-- Full 3D movement following camera direction, can pass through anything
 		if flyActive then
 			local hrp, hum = ensureFlyForces()
-			if hrp and hum then
-				-- Ensure Humanoid doesn't report movement so default running animation won't play
-				hum:Move(Vector3.new(), true)
-				-- Force rigid state (Physics) to prevent any animation state transitions
-				hum:ChangeState(Enum.HumanoidStateType.Physics)
-				-- Maintain elevated hip height gently
-				if prevHipHeight ~= nil then
-					local targetHip = math.max(prevHipHeight, (prevHipHeight or hum.HipHeight or 2) + flyHipOffset)
-					hum.HipHeight = targetHip
+			if hrp and hum and flyBV and flyBG then
+				-- Maintain Physics state for straight body posture
+				if hum:GetState() ~= Enum.HumanoidStateType.Physics then
+					hum:ChangeState(Enum.HumanoidStateType.Physics)
 				end
-				-- Keep anti-gravity in sync with mass/gravity
-				if flyAntiGravVF then
-					flyAntiGravVF.Force = Vector3.new(0, hrp.AssemblyMass * workspace.Gravity, 0)
-				end
-				-- Maintain minimum clearance above ground to avoid any landing/falling effects
-				local charRef = localPlayer and localPlayer.Character or nil
-				if charRef and hrp then
-					flyRayParams.FilterType = Enum.RaycastFilterType.Exclude
-					flyRayParams.FilterDescendantsInstances = {charRef}
-					local result = workspace:Raycast(hrp.Position, Vector3.new(0, -50, 0), flyRayParams)
-					if result then
-						local clearance = hrp.Position.Y - result.Position.Y
-						local desired = hum.HipHeight + 0.8
-						if clearance < desired then
-							local dy = desired - clearance
-							hrp.CFrame = hrp.CFrame + Vector3.new(0, dy, 0)
-							local v = hrp.AssemblyLinearVelocity
-							hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
-						end
-					end
-				end
-				-- Gather inputs
-				local move = Vector3.new()
+				
+				-- Get input states
 				local isW = UserInputService:IsKeyDown(Enum.KeyCode.W)
 				local isS = UserInputService:IsKeyDown(Enum.KeyCode.S)
 				local isA = UserInputService:IsKeyDown(Enum.KeyCode.A)
 				local isD = UserInputService:IsKeyDown(Enum.KeyCode.D)
-				local isE = UserInputService:IsKeyDown(Enum.KeyCode.E)
-				local isQ = UserInputService:IsKeyDown(Enum.KeyCode.Q)
+				local isE = UserInputService:IsKeyDown(Enum.KeyCode.E) -- Up
+				local isQ = UserInputService:IsKeyDown(Enum.KeyCode.Q) -- Down
 
+				-- Get camera direction vectors (full 3D, not just horizontal)
 				local camCF = camera.CFrame
-				local forward = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z)
-				local right = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
-				if forward.Magnitude > 0 then forward = forward.Unit end
-				if right.Magnitude > 0 then right = right.Unit end
+				local forward = camCF.LookVector
+				local right = camCF.RightVector
+				local up = camCF.UpVector
 
+				-- Calculate movement vector relative to camera
+				local move = Vector3.new()
 				if isW then move = move + forward end
 				if isS then move = move - forward end
-				if isA then move = move - right end
 				if isD then move = move + right end
-				if isE then move = move + Vector3.new(0, 1, 0) end
-				if isQ then move = move + Vector3.new(0, -1, 0) end
+				if isA then move = move - right end
+				if isE then move = move + up end
+				if isQ then move = move - up end
 
+				-- Apply movement (no collision detection - noclip)
 				if move.Magnitude > 0 then
-					move = move.Unit * flySpeed
+					flyBV.Velocity = move.Unit * flySpeed
 				else
-					-- If no input, stay hovering (velocity zero; anti-gravity holds altitude)
-					move = Vector3.new()
+					-- No input - stop movement
+					flyBV.Velocity = Vector3.new()
 				end
-
-				-- Apply velocity
-				flyBV.Velocity = move
-
-				-- Keep upright strongly; face camera yaw (no pitch/roll)
-				local look = forward.Magnitude > 0 and forward or Vector3.new(0, 0, -1)
-				local yawFace = CFrame.new(hrp.Position, hrp.Position + Vector3.new(look.X, 0, look.Z))
-				flyBG.CFrame = yawFace
-				-- Zero out any angular velocity to prevent spin
-				hrp.RotVelocity = Vector3.new()
-				-- Correct pitch/roll drift explicitly if detected
-				local _, y, _ = hrp.CFrame:ToOrientation()
-				local corrected = CFrame.new(hrp.Position) * CFrame.Angles(0, y, 0)
-				if (hrp.CFrame.LookVector.Y ~= 0) or math.abs(hrp.CFrame.RightVector.Y) > 1e-3 then
-					hrp.CFrame = corrected
-				end
+				
+				-- Make character face camera direction (straight body posture)
+				flyBG.CFrame = CFrame.new(hrp.Position, hrp.Position + forward)
 			end
 		else
-			-- Ensure forces removed if not flying
+			-- Clean up if not flying
 			if flyBV or flyBG then cleanupFlyForces() end
 		end
 
